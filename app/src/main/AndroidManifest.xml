@@ -15,6 +15,11 @@
         <package android:name="com.liskovsoft.smarttubetv" />
         <package android:name="com.google.android.youtube.tv" />
         <package android:name="com.google.android.youtube.googletv" />
+        <!-- External video players (Settings > Player > Play with) -->
+        <package android:name="com.brouken.player" />
+        <package android:name="org.videolan.vlc" />
+        <package android:name="com.mxtech.videoplayer.ad" />
+        <package android:name="com.mxtech.videoplayer.pro" />
     </queries>
 
     <application

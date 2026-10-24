@@ -17,9 +17,21 @@ class PlayerSettings(private val prefs: SharedPreferences) {
         set(v) = prefs.edit().putBoolean("autoplay_next", v).apply()
     var matchFrameRate: Boolean get() = prefs.getBoolean("match_frame_rate", true)
         set(v) = prefs.edit().putBoolean("match_frame_rate", v).apply()
+    // "Orbit", "Ask each time" or the name of an external player (see externalPlayers).
+    var playWith: String get() = prefs.getString("play_with", "Orbit") ?: "Orbit"
+        set(v) = prefs.edit().putString("play_with", v).apply()
 
     companion object {
         val skipModes = listOf("Off", "Show button", "Skip automatically")
+
+        // Players that report back where the viewer stopped, so progress and Trakt still work.
+        // MX Player's API (which Just Player shares) and VLC's.
+        data class ExternalPlayer(val name: String, val packages: List<String>, val vlcApi: Boolean = false)
+        val externalPlayers = listOf(
+            ExternalPlayer("Just Player", listOf("com.brouken.player")),
+            ExternalPlayer("VLC", listOf("org.videolan.vlc"), vlcApi = true),
+            ExternalPlayer("MX Player", listOf("com.mxtech.videoplayer.pro", "com.mxtech.videoplayer.ad"))
+        )
     }
 }
 

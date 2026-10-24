@@ -86,6 +86,8 @@ class MainActivity : Activity() {
     private val progress by lazy { WatchProgress(this, Profiles.progressName(profile.id)) }
     // My List and progress, synced with the Stremio library when signed in.
     private val library by lazy { StremioLibrary(prefs, progress, BuildConfig.TMDB_API_KEY) }
+    // Trakt scrobbling, watchlist and paused titles, when signed in.
+    private val trakt by lazy { Trakt(prefs, progress, library, BuildConfig.TMDB_API_KEY) }
     private val subtitleSettings by lazy { SubtitleSettings(prefs) }
     private val playerSettings by lazy { PlayerSettings(prefs) }
     private val tmdbSettings by lazy { TmdbSettings(prefs) }
@@ -1099,7 +1101,8 @@ class MainActivity : Activity() {
         detailsReturnScreen = "home"
         actorPages.clear()
         // Watched on another device a while ago? Pick it up (at most every five minutes).
-        if (System.currentTimeMillis() - library.lastPull > 5 * 60_000 && library.lastPull > 0) syncLibrary()
+        val lastPull = maxOf(library.lastPull, trakt.lastPull)
+        if (System.currentTimeMillis() - lastPull > 5 * 60_000 && lastPull > 0) syncLibrary()
         val kept = homeFrame
         if (!homeDirty && kept != null) {
             stopDiscoverFocusWatcher()
@@ -1971,10 +1974,12 @@ class MainActivity : Activity() {
                     0 -> {
                         progress.remove(entry)
                         library.dismiss(entry)
+                        Trakt.Item.from(entry.id, entry.type)?.let { trakt.dismiss(it) }
                     }
                     1 -> {
                         progress.markWatched(entry)
                         progress.get(entry.id)?.let { library.pushProgress(it, force = true) }
+                        Trakt.Item.from(entry.id, entry.type)?.let { trakt.markWatched(it) }
                     }
                     else -> return@setItems
                 }
@@ -2106,6 +2111,7 @@ class MainActivity : Activity() {
                         return@post
                     }
                     val added = library.toggle(id, type, title, poster, tmdbId())
+                    trakt.setInWatchlist(id, type, added)
                     homeDirty = true
                     paint(id)
                     android.widget.Toast.makeText(this,
@@ -2267,6 +2273,8 @@ class MainActivity : Activity() {
         val addonList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         account.addView(addonList)
 
+        val traktSection = panel()
+        buildTraktSettings(traktSection)
         val subtitlesSection = panel()
         buildSubtitleSettings(subtitlesSection)
         val playerSection = panel()
@@ -2588,12 +2596,134 @@ class MainActivity : Activity() {
                     "OK plays it using the same source when possible.") { ps.nextEpisodeButton = it }
             toggle("Autoplay next episode", ps.autoplayNext,
                 "Start the next episode automatically when one ends.") { ps.autoplayNext = it }
+            val installed = installedExternalPlayers()
+            option("Play with", ps.playWith,
+                "Orbit's own player, or another player app on this TV" +
+                    (if (installed.isEmpty()) " (install Just Player, VLC or MX Player to choose one)" else "") +
+                    ". Where you stop in another player still saves to Continue watching and Trakt.") {
+                val choices = listOf("Orbit", "Ask each time") + installed.map { it.name }
+                choose("Play with", choices, choices.indexOf(ps.playWith).coerceAtLeast(0)) {
+                    ps.playWith = choices[it]
+                    render("Play with")
+                }
+            }
             toggle("Match frame rate", ps.matchFrameRate,
                 "Switch the TV to the video's frame rate (e.g. 24 Hz for films) for smoother motion. " +
                     "The screen goes dark for a moment while the TV switches.") { ps.matchFrameRate = it }
             focusLabel?.let { label -> section.findViewWithTag<View>(label)?.requestFocus() }
         }
         render()
+    }
+
+    private fun buildTraktSettings(section: LinearLayout) {
+        fun render(focus: Boolean = false) {
+            section.removeAllViews()
+            section.addView(Ui.text(this, Ui.Type.Headline, "Trakt"))
+            val user = trakt.user
+            section.addView(Ui.text(this, Ui.Type.Body,
+                if (trakt.signedIn) "Signed in as $user. What you watch in Orbit is added to your Trakt history, " +
+                    "your Trakt watchlist is part of My List, and titles paused elsewhere appear in Continue watching."
+                else "Sign in to keep your Trakt history up to date as you watch, and to bring your " +
+                    "Trakt watchlist and paused titles into Orbit.", Ui.textSecondary).apply { setPadding(0, 12, 0, 24) })
+            val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            section.addView(buttons)
+            fun button(label: String, onClick: () -> Unit) = makePicker(onClick).apply { text = label }.also {
+                buttons.addView(it, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = 18 })
+            }
+            val first = if (trakt.signedIn) {
+                button("Sync now") {
+                    android.widget.Toast.makeText(this, "Syncing with Trakt...", android.widget.Toast.LENGTH_SHORT).show()
+                    syncLibrary()
+                }.also {
+                    button("Sign out") {
+                        trakt.signOut()
+                        render(true)
+                    }
+                }
+            } else if (!trakt.available) {
+                null
+            } else button("Sign in to Trakt") { showTraktSignIn { render(true) } }
+            if (focus) first?.requestFocus()
+        }
+        render()
+    }
+
+    // Trakt's sign-in for TVs: a code entered at trakt.tv/activate on a phone or computer.
+    private fun showTraktSignIn(onDone: () -> Unit) {
+        lateinit var status: TextView
+        lateinit var codeView: TextView
+        val qrView = ImageView(this)
+        var open = true
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(48, 24, 48, 8)
+            addView(qrView, LinearLayout.LayoutParams(360, 360))
+            codeView = TextView(context).apply {
+                text = "…"
+                textSize = 40f
+                letterSpacing = 0.15f
+                setTextColor(Color.WHITE)
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding(0, 18, 0, 6)
+            }
+            addView(codeView)
+            status = TextView(context).apply {
+                text = "Getting a code..."
+                textSize = 16f
+                setTextColor(Color.rgb(195, 202, 220))
+                gravity = Gravity.CENTER
+            }
+            addView(status)
+        }
+        val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Sign in to Trakt")
+            .setView(content)
+            .setNegativeButton("Cancel", null)
+            .setOnDismissListener { open = false }
+            .show()
+        thread {
+            val main = Handler(Looper.getMainLooper())
+            try {
+                val code = trakt.startSignIn()
+                val size = 360
+                val matrix = com.google.zxing.qrcode.QRCodeWriter()
+                    .encode(code.url, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
+                val pixels = IntArray(size * size) { i -> if (matrix[i % size, i / size]) Color.BLACK else Color.WHITE }
+                val qr = android.graphics.Bitmap.createBitmap(pixels, size, size, android.graphics.Bitmap.Config.RGB_565)
+                main.post {
+                    qrView.setImageBitmap(qr)
+                    codeView.text = code.userCode
+                    status.text = "On your phone or computer, go to ${code.url.removePrefix("https://")} " +
+                        "(or scan the code) and enter the code above."
+                }
+                val until = System.currentTimeMillis() + code.expiresInS * 1000L
+                var wait = code.intervalS * 1000L
+                while (open && System.currentTimeMillis() < until) {
+                    Thread.sleep(wait)
+                    if (!open) return@thread
+                    val done = try {
+                        trakt.finishSignIn(code)
+                    } catch (e: java.io.IOException) {
+                        wait += 1000 // offline for a moment: keep trying, a little slower
+                        false
+                    }
+                    if (done) {
+                        main.post {
+                            dialog.dismiss()
+                            android.widget.Toast.makeText(this, "Signed in to Trakt as ${trakt.user}", android.widget.Toast.LENGTH_LONG).show()
+                            onDone()
+                            syncLibrary()
+                        }
+                        return@thread
+                    }
+                }
+                if (open) main.post { status.text = "The code expired. Close this and try again." }
+            } catch (e: Exception) {
+                main.post { status.text = e.message ?: "Couldn't reach Trakt. Check the TV's internet connection." }
+            }
+        }
     }
 
     // Email and password are sent to Stremio once; only the returned session key is saved.
@@ -3717,20 +3847,24 @@ class MainActivity : Activity() {
         // Addon subtitles are normally fetched by now; wait up to 3 s if not.
         val play = { startAt: Long ->
             val pending = streamsSubtitles.takeUnless { trailer }
-            if (pending == null || pending.isDone) {
-                startPlayback(url, stream.headers, id, target, startAt, addonSubtitlesFrom(pending))
-            } else {
-                playbackError = null
-                updateStreamsStatus()
-                streamsStatus?.text = "Loading subtitles..."
-                thread {
-                    val subs = try {
-                        pending.get(3, java.util.concurrent.TimeUnit.SECONDS)
-                    } catch (_: Exception) {
-                        emptyList()
-                    }
-                    Handler(Looper.getMainLooper()).post {
-                        if (currentScreen == "streams") startPlayback(url, stream.headers, id, target, startAt, subs)
+            playWithChosenPlayer(trailer, { player ->
+                startExternalPlayer(player, url, stream, id, target, startAt, addonSubtitlesFrom(pending))
+            }) {
+                if (pending == null || pending.isDone) {
+                    startPlayback(url, stream.headers, id, target, startAt, addonSubtitlesFrom(pending))
+                } else {
+                    playbackError = null
+                    updateStreamsStatus()
+                    streamsStatus?.text = "Loading subtitles..."
+                    thread {
+                        val subs = try {
+                            pending.get(3, java.util.concurrent.TimeUnit.SECONDS)
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
+                        Handler(Looper.getMainLooper()).post {
+                            if (currentScreen == "streams") startPlayback(url, stream.headers, id, target, startAt, subs)
+                        }
                     }
                 }
             }
@@ -3750,12 +3884,144 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun installedExternalPlayers(): List<PlayerSettings.Companion.ExternalPlayer> =
+        PlayerSettings.externalPlayers.filter { player -> player.packages.any { isInstalled(it) } }
+
+    private fun isInstalled(pkg: String) = try {
+        packageManager.getPackageInfo(pkg, 0)
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    // Runs inOrbit, or external with the player chosen in Settings (asking first with
+    // "Ask each time"). Trailers always play in Orbit.
+    private fun playWithChosenPlayer(
+        trailer: Boolean,
+        external: (PlayerSettings.Companion.ExternalPlayer) -> Unit,
+        inOrbit: () -> Unit
+    ) {
+        val installed = installedExternalPlayers()
+        val setting = playerSettings.playWith
+        when {
+            trailer || installed.isEmpty() || setting == "Orbit" -> inOrbit()
+            setting == "Ask each time" -> {
+                val names = listOf("Orbit") + installed.map { it.name }
+                choose("Play with", names, 0) { if (it == 0) inOrbit() else external(installed[it - 1]) }
+            }
+            else -> installed.firstOrNull { it.name == setting }?.let(external) ?: inOrbit()
+        }
+    }
+
+    // Plays in another app and asks it to report back where the viewer stopped (MX Player's
+    // and VLC's result extras); see onActivityResult. What's playing is saved in prefs, since
+    // Orbit may be closed by Android while the other player is open.
+    private fun startExternalPlayer(
+        player: PlayerSettings.Companion.ExternalPlayer,
+        url: String,
+        stream: StremioStreams.Stream,
+        id: String?,
+        target: WatchTarget?,
+        startAt: Long,
+        subtitles: List<StremioSubtitles.Subtitle>
+    ) {
+        val pkg = player.packages.first { isInstalled(it) }
+        val title = listOfNotNull(target?.title, target?.episodeLabel?.takeIf { it.isNotBlank() }).joinToString("  ·  ")
+            .ifBlank { stream.name }
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+            .setDataAndType(android.net.Uri.parse(url), "video/*")
+            .setPackage(pkg)
+            .putExtra("title", title)
+        val subs = listOf(subtitleSettings.language, subtitleSettings.secondLanguage).filter { it.isNotBlank() }
+            .let { langs -> AddonSubtitleTrack.rank(StremioSubtitles.pick(subtitles, langs, subtitleSettings.onlyPreferred,
+                perPreferred = 3, total = 6), stream.filename) }
+        if (player.vlcApi) {
+            if (startAt > 0) intent.putExtra("position", startAt)
+            subs.firstOrNull()?.let { intent.putExtra("subtitles_location", it.url) }
+        } else {
+            intent.putExtra("return_result", true)
+            if (startAt > 0) intent.putExtra("position", startAt.toInt())
+            if (stream.headers.isNotEmpty()) {
+                intent.putExtra("headers", stream.headers.flatMap { listOf(it.key, it.value) }.toTypedArray())
+            }
+            if (subs.isNotEmpty()) {
+                intent.putExtra("subs", subs.map { android.net.Uri.parse(it.url) }.toTypedArray<android.os.Parcelable>())
+                intent.putExtra("subs.name", subs.map { "${SubtitleSettings.languageName(it.language)} · ${it.addonName}" }.toTypedArray())
+                intent.putExtra("subs.enable", arrayOf<android.os.Parcelable>(android.net.Uri.parse(subs.first().url)))
+            }
+        }
+        if (id != null && target != null) {
+            prefs.edit().putString("external_playing", org.json.JSONObject()
+                .put("id", id).put("type", target.type).put("title", target.title)
+                .put("episodeLabel", target.episodeLabel).put("poster", target.poster).put("tvId", target.tvId)
+                .put("season", target.season).put("episode", target.episode).put("startAt", startAt)
+                .put("vlc", player.vlcApi).toString()).commit()
+            Trakt.Item.from(id, target.type)?.let { item ->
+                val known = progress.get(id)?.durationMs?.takeIf { it > 0 }
+                trakt.scrobble("start", item, if (known != null) startAt * 100f / known else 0f)
+            }
+        } else prefs.edit().remove("external_playing").commit()
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, externalPlayerRequest)
+        } catch (_: Exception) {
+            prefs.edit().remove("external_playing").commit()
+            playbackError = "Couldn't open ${player.name}."
+            updateStreamsStatus()
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != externalPlayerRequest) return
+        val saved = prefs.getString("external_playing", null)?.let { org.json.JSONObject(it) } ?: return
+        prefs.edit().remove("external_playing").commit()
+        if (data == null) return
+        val extras = data.extras ?: return
+        fun number(vararg keys: String): Long = keys.firstNotNullOfOrNull { key ->
+            when (val v = extras.get(key)) { is Int -> v.toLong(); is Long -> v; else -> null }
+        } ?: 0L
+        val vlc = saved.optBoolean("vlc")
+        val duration = if (vlc) number("extra_duration") else number("duration")
+        var position = if (vlc) number("extra_position") else number("position")
+        // MX Player and Just Player say when the video played to the end.
+        if (extras.getString("end_by") == "playback_completion") position = duration
+        if (duration <= 0 || (position <= 0 && duration > 0 && extras.getString("end_by") != "playback_completion")) return
+        val entry = WatchProgress.Entry(
+            saved.getString("id"), saved.getString("type"), saved.optString("title"), saved.optString("episodeLabel"),
+            saved.optString("poster"), saved.optInt("tvId", -1), saved.optInt("season", -1), saved.optInt("episode", -1),
+            position.coerceAtMost(duration), duration, System.currentTimeMillis()
+        )
+        progress.save(entry)
+        library.pushProgress(entry, force = true)
+        Trakt.Item.from(entry.id, entry.type)?.let { trakt.scrobble("stop", it, entry.fraction * 100f) }
+        homeDirty = true
+    }
+
+    private val externalPlayerRequest = 4711
+
     private fun addonSubtitlesFrom(
         future: java.util.concurrent.Future<List<StremioSubtitles.Subtitle>>?
     ): List<StremioSubtitles.Subtitle> = try {
         future?.takeIf { it.isDone }?.get().orEmpty()
     } catch (_: Exception) {
         emptyList()
+    }
+
+    // What Trakt was last told about the playing title ("start", "pause" or "stop").
+    private var scrobbleItem: Trakt.Item? = null
+    private var scrobbleState: String? = null
+
+    private fun scrobble(action: String) {
+        val item = scrobbleItem ?: return
+        val p = player ?: return
+        if (action == scrobbleState || scrobbleState == "stop") return
+        val duration = p.duration.takeIf { it > 0 } ?: return
+        scrobbleState = action
+        trakt.scrobble(action, item, if (action == "stop" && p.playbackState == androidx.media3.common.Player.STATE_ENDED) 100f
+            else p.currentPosition * 100f / duration)
     }
 
     // Saves where the viewer is in the current title (called every 10 s and on exit).
@@ -3777,16 +4043,22 @@ class MainActivity : Activity() {
         library.pushProgress(entry, force = finished || pushNow)
     }
 
-    // Brings My List and progress up to date from the Stremio library. Home is rebuilt if
-    // anything on it changed (straight away when it's the screen showing).
+    // Brings My List and progress up to date from the Stremio library, then Trakt. Home is
+    // rebuilt if anything on it changed (straight away when it's the screen showing).
     private fun syncLibrary() {
-        if (!library.signedIn) return
+        if (!library.signedIn && !trakt.signedIn) return
         thread {
-            val changed = try {
+            val fromStremio = try {
                 library.pull()
             } catch (_: Exception) {
                 false
             }
+            val fromTrakt = try {
+                trakt.pull()
+            } catch (_: Exception) {
+                false
+            }
+            val changed = fromStremio || fromTrakt
             Handler(Looper.getMainLooper()).post {
                 if (!changed) return@post
                 homeDirty = true
@@ -5385,8 +5657,12 @@ class MainActivity : Activity() {
         startAtMs: Long = 0L,
         addonSubtitles: List<StremioSubtitles.Subtitle> = emptyList()
     ) {
+        // Moving straight on to another video (next episode): finish the last one on Trakt.
+        scrobble("stop")
         playingId = watchId
         playingTarget = target
+        scrobbleItem = if (target != null && watchId != null) Trakt.Item.from(watchId, target.type) else null
+        scrobbleState = null
         progressHandler.removeCallbacks(progressTicker)
         progressHandler.postDelayed(progressTicker, 10_000)
         // Moving on to the next episode keeps where Back from the player leads.
@@ -5502,6 +5778,7 @@ class MainActivity : Activity() {
                         if (playingTarget != null && duration > 0 && position < duration - 120_000 &&
                             position < duration * 9 / 10 && reconnect(it, null)) return
                         saveProgress(finished = true)
+                        scrobble("stop")
                         if (playerSettings.autoplayNext) nextEpisode?.let { playNextEpisode(it) }
                     }
 
@@ -5514,6 +5791,13 @@ class MainActivity : Activity() {
                         // through a film, which stops Orbit and closes the player.
                         playerView.keepScreenOn = isPlaying
                         if (isPlaying && audioHeldFrom == null) hideLoadingOverlay()
+                        if (isPlaying && audioHeldFrom == null) scrobble("start")
+                    }
+
+                    // Paused by the viewer (not just buffering).
+                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                        if (!playWhenReady && audioHeldFrom == null &&
+                            reason == androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) scrobble("pause")
                     }
 
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
@@ -5990,6 +6274,8 @@ class MainActivity : Activity() {
         progressHandler.removeCallbacks(progressTicker)
         stopPlayerExtras()
         saveProgress(pushNow = true)
+        scrobble("stop")
+        scrobbleItem = null
         playingId = null
         playingTarget = null
         playerView.player = null

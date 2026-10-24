@@ -16,6 +16,12 @@ if (tmdbFile.exists()) {
     tmdbFile.withInputStream { tmdbProperties.load(it) }
 }
 
+def traktProperties = new Properties()
+def traktFile = rootProject.file("trakt.properties")
+if (traktFile.exists()) {
+    traktFile.withInputStream { traktProperties.load(it) }
+}
+
 android {
     buildFeatures {
         buildConfig true
@@ -40,6 +46,7 @@ android {
         versionName "1.1"
         manifestPlaceholders = [appLabel: "Orbit"]
         buildConfigField "String", "TMDB_API_KEY", "\"${tmdbProperties.getProperty('TMDB_API_KEY', '')}\""
+        buildConfigField "String", "TRAKT_CLIENT_ID", "\"${traktProperties.getProperty('TRAKT_CLIENT_ID', '')}\""
     }
 
     signingConfigs {
