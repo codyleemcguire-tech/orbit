@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Orbit" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/orbit_background</item>
+        <item name="android:colorBackground">@color/orbit_background</item>
+        <!-- The system's own launch screen in the same colour; Orbit's splash follows. -->
+        <item name="android:windowSplashScreenBackground">@color/orbit_background</item>
+    </style>
+</resources>

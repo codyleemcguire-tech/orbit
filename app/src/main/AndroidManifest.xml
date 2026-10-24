@@ -18,7 +18,7 @@
     </queries>
 
     <application
-        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:theme="@style/Theme.Orbit"
         android:label="Orbit"
         android:banner="@drawable/banner"
         android:usesCleartextTraffic="false">

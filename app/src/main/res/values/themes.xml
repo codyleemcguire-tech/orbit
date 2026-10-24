@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Orbit's near-black from the first frame, so launching doesn't flash. -->
+    <style name="Theme.Orbit" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/orbit_background</item>
+        <item name="android:colorBackground">@color/orbit_background</item>
+    </style>
+    <color name="orbit_background">#090B10</color>
+</resources>

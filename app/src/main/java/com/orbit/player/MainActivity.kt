@@ -236,7 +236,42 @@ class MainActivity : Activity() {
         applySavedAddons()
         // Read addon manifests in the background so the first Play is quick.
         thread { StremioAddons.loadManifests() }
-        if (Profiles.list(this).size > 1 && !Profiles.chosenThisLaunch) showProfilePicker() else showHomeScreen()
+        // Opening Orbit: splash, then "Who's watching?", then Home. Switching profile
+        // (which recreates the activity) goes straight to Home.
+        if (Profiles.chosenThisLaunch) showHomeScreen() else showSplash { showProfilePicker() }
+    }
+
+    // The logo fades in, holds a moment, and the page fades into what comes next.
+    private fun showSplash(then: () -> Unit) {
+        currentScreen = "splash"
+        val logo = TextView(this).apply {
+            text = android.text.SpannableString("orbit.").apply {
+                setSpan(android.text.style.ForegroundColorSpan(Ui.accent), 5, 6, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            textSize = 96f
+            typeface = Ui.font("bold")
+            letterSpacing = -0.03f
+            includeFontPadding = false
+            setTextColor(Ui.textPrimary)
+            alpha = 0f
+            scaleX = 0.9f
+            scaleY = 0.9f
+        }
+        val frame = FrameLayout(this).apply {
+            setBackgroundColor(Ui.background)
+            addView(logo, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        }
+        setContentView(frame)
+        logo.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(650)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .withEndAction {
+                logo.postDelayed({
+                    if (currentScreen != "splash") return@postDelayed
+                    frame.animate().alpha(0f).setDuration(220).withEndAction {
+                        if (currentScreen == "splash") then()
+                    }.start()
+                }, 450)
+            }.start()
     }
 
     // App-private storage for the Stremio session key, addons and settings: the profile's own.
@@ -5477,7 +5512,8 @@ class MainActivity : Activity() {
                 else leavePlayer()
             }
             "actor" -> leaveActor()
-            "profiles" -> if (Profiles.chosenThisLaunch || Profiles.list(this).size <= 1) showHomeScreen() else finish()
+            "profiles" -> if (Profiles.chosenThisLaunch) showHomeScreen() else finish()
+            "splash" -> finish()
             "transfer" -> leaveTransfer()
             "streams" -> leaveStreams()
             "details", "tv_details" -> leaveDetails()
@@ -5497,6 +5533,8 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         transferServer?.stop()
         transferServer = null
+        // Closing Orbit (not a profile switch) asks "Who's watching?" again next time.
+        if (isFinishing) Profiles.chosenThisLaunch = false
         super.onDestroy()
     }
 }
