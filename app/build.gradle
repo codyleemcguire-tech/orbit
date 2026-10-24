@@ -23,6 +23,11 @@ if (traktFile.exists()) {
 }
 
 android {
+    lint {
+        // Media3's "unstable" APIs are used on purpose (NuvioTV disables this check too).
+        disable "UnsafeOptInUsageError"
+    }
+
     buildFeatures {
         buildConfig true
     }

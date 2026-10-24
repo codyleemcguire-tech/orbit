@@ -119,7 +119,15 @@ object Profiles {
             .put("orbitProfile", 1)
             .put("name", profile.name)
             .put("color", profile.color)
-            .put("prefs", dump(context.getSharedPreferences(prefsName(id), Context.MODE_PRIVATE)))
+            .put("prefs", dump(context.getSharedPreferences(prefsName(id), Context.MODE_PRIVATE))
+                // Each device signs in to Trakt itself: Trakt replaces the sign-in token every
+                // time one device renews it, which would sign the other device out. The audio
+                // delay suits this device's TV and sound system, not the other's.
+                .also { prefs ->
+                    prefs.keys().asSequence().toList()
+                        .filter { it.startsWith("trakt_") || it == "audio_delay_ms" || it == "external_playing" }
+                        .forEach { prefs.remove(it) }
+                })
             .put("progress", dump(context.getSharedPreferences(progressName(id), Context.MODE_PRIVATE)))
     }
 

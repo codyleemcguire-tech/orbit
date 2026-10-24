@@ -370,6 +370,10 @@ internal fun MainActivity.reconnect(p: ExoPlayer, error: androidx.media3.common.
     // Network and server errors only; a file the TV can't decode won't get better.
     if (error != null && error.errorCode !in 2000..2999 &&
         error.errorCode != androidx.media3.common.PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) return false
+    // A host refusing the link (403 for an expired debrid link, 404) won't change on a retry.
+    val http = generateSequence(error?.cause) { it.cause }
+        .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>().firstOrNull()
+    if (http != null && http.responseCode in 400..499 && http.responseCode != 408 && http.responseCode != 429) return false
     val now = System.currentTimeMillis()
     if (now - lastReconnectAt > 120_000) reconnects = 0
     if (reconnects >= 5) return false

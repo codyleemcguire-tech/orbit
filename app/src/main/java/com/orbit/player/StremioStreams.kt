@@ -29,6 +29,7 @@ object StremioStreams {
     // Addons whose manifest offers streams for this type and id.
     fun addonsFor(type: String, id: String): List<Addon> {
         StremioAddons.loadManifests()
+        val seen = mutableMapOf<String, Int>()
         return StremioAddons.addonUrls.mapNotNull { manifestUrl ->
             try {
                 val manifest = StremioAddons.manifest(manifestUrl)
@@ -43,6 +44,11 @@ object StremioStreams {
             } catch (_: Exception) {
                 null
             }
+        }.map { addon ->
+            // The sources page groups streams by addon name, so two addons with one name
+            // (two Torrentio set-ups, say) are numbered rather than merged.
+            val n = seen.merge(addon.name, 1, Int::plus) ?: 1
+            if (n == 1) addon else addon.copy(name = "${addon.name} ($n)")
         }
     }
 
