@@ -41,7 +41,6 @@ class MainActivity : Activity() {
     // The scroll view that hosts every non-player screen; the player replaces it while playing.
     private lateinit var contentScroll: ScrollView
     private lateinit var homePlayButton: View
-    private lateinit var homeDetailsButton: View
     private lateinit var homeRowsScroll: ScrollView
     private val homeRowItems = mutableListOf<List<TmdbTest.CatalogueItem>>()
     private var heroItem: TmdbTest.CatalogueItem? = null
@@ -1083,8 +1082,7 @@ class MainActivity : Activity() {
             clipChildren = false
         }
         val heroPlay = Ui.button(this, "▶  Play", primary = true) { heroItem?.let { playHeroItem(it) } }
-        val heroDetails = Ui.button(this, "Details") { heroItem?.let { openHomeItem(it) } }
-        listOf(heroPlay, heroDetails).forEach {
+        listOf(heroPlay).forEach {
             it.id = View.generateViewId()
             it.onFocusChangeListener = chainFocus(it.onFocusChangeListener) { _, focused ->
                 if (focused && !pendingHomeRestore) {
@@ -1095,10 +1093,9 @@ class MainActivity : Activity() {
             buttons.addView(it, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = 18 })
         }
         heroPlay.nextFocusLeftId = heroPlay.id
-        heroDetails.nextFocusRightId = heroDetails.id
+        heroPlay.nextFocusRightId = heroPlay.id
         hero.addView(buttons)
         homePlayButton = heroPlay
-        homeDetailsButton = heroDetails
         pointTabsDownTo(tabs, heroPlay)
 
         // Rows scroll in the space under the hero.
@@ -5082,7 +5079,7 @@ class MainActivity : Activity() {
             }
             return true
         }
-        if ((focused === homePlayButton || focused === homeDetailsButton) && !up && homeRows.isNotEmpty()) {
+        if (focused === homePlayButton && !up && homeRows.isNotEmpty()) {
             focusHomeRow(0, homeRows[0].tag as? Int ?: 0)
             return true
         }
