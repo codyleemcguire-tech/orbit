@@ -6,7 +6,7 @@ import org.json.JSONObject
 // Where the viewer got to in each movie and episode, kept on the device. Entries are keyed
 // by the id Stremio addons use: "tt0111161" for a movie, "tt0903747:1:2" for an episode,
 // so progress follows the title whichever stream or addon plays it.
-class WatchProgress(context: Context) {
+class WatchProgress(context: Context, fileName: String = "orbit_progress") {
 
     data class Entry(
         val id: String,
@@ -33,7 +33,7 @@ class WatchProgress(context: Context) {
         val resumable: Boolean get() = !watched && positionMs >= 60_000
     }
 
-    private val prefs = context.getSharedPreferences("orbit_progress", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(fileName, Context.MODE_PRIVATE)
 
     fun get(id: String): Entry? = prefs.getString(id, null)?.let { parse(id, it) }
 
