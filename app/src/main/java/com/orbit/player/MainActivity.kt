@@ -167,6 +167,9 @@ class MainActivity : Activity() {
     private var playbackError: String? = null
     // All stream addons are asked at once; each answers within a few seconds.
     private val streamLoader = java.util.concurrent.Executors.newFixedThreadPool(6)
+    // The stream search the sources page is showing, and its listener (see StreamSearch).
+    private var streamsSession: StreamSearch.Session? = null
+    private var streamsListener: StreamSearch.Listener? = null
 
     // Which top-level screen details pages go back to.
     private var detailsReturnScreen = "home"
@@ -208,6 +211,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Ui.init(this)
+        StremioAddons.diskCache = cacheDir
 
         window.statusBarColor = Ui.background
         window.navigationBarColor = Ui.background
@@ -3524,12 +3528,17 @@ class MainActivity : Activity() {
             } catch (_: Exception) {
                 null
             }
-            val addons = if (id == null) emptyList() else StremioStreams.addonsFor(type, id)
             Handler(Looper.getMainLooper()).post {
                 if (request != streamsRequest) return@post
                 streamsWatchId = id
+                if (id == null) {
+                    streamsPending = 0
+                    streamsNote = "Couldn't find this title's IMDb id, so your addons can't be asked for it."
+                    if (currentScreen == "streams") updateStreamsStatus()
+                    return@post
+                }
                 // Fetch addon subtitles now, while the viewer picks a stream.
-                streamsSubtitles = if (id != null && subtitleSettings.addonSubtitles) {
+                streamsSubtitles = if (subtitleSettings.addonSubtitles) {
                     streamLoader.submit<List<StremioSubtitles.Subtitle>> {
                         try {
                             StremioSubtitles.fetch(type, id)
@@ -3538,27 +3547,22 @@ class MainActivity : Activity() {
                         }
                     }
                 } else null
-                streamsPending = addons.size
-                streamAddonOrder = addons.map { it.name }
-                streamsNote = when {
-                    id == null -> "Couldn't find this title's IMDb id, so your addons can't be asked for it."
-                    addons.isEmpty() -> "None of your Stremio addons offer streams for this."
-                    else -> null
-                }
-                if (currentScreen == "streams") updateStreamsStatus()
-            }
-            if (id == null) return@thread
-            addons.forEach { addon ->
-                streamLoader.execute {
-                    val streams = try {
-                        StremioStreams.fetchStreams(addon, type, id)
-                    } catch (_: Exception) {
-                        emptyList()
+                // A running or recent search for this title (see StreamSearch) shows at once.
+                val session = StreamSearch.get(type, id)
+                streamsSession?.let { old -> streamsListener?.let { old.stop(it) } }
+                val listener = object : StreamSearch.Listener {
+                    override fun onAddons(addons: List<StremioStreams.Addon>) {
+                        if (request != streamsRequest) return
+                        streamsPending = session.pending
+                        streamAddonOrder = addons.map { it.name }
+                        streamsNote = if (addons.isEmpty()) "None of your Stremio addons offer streams for this." else null
+                        if (currentScreen == "streams") updateStreamsStatus()
                     }
-                    Handler(Looper.getMainLooper()).post {
-                        if (request != streamsRequest) return@post
-                        streamsPending--
-                        if (streams.isNotEmpty()) {
+
+                    override fun onResult(addon: StremioStreams.Addon, streams: List<StremioStreams.Stream>) {
+                        if (request != streamsRequest) return
+                        streamsPending = session.pending
+                        if (streams.isNotEmpty() && streamGroups.none { it.first == addon.name }) {
                             // Keep the account's addon order, whatever order answers arrive in.
                             streamGroups.add(addon.name to streams)
                             streamGroups.sortBy { streamAddonOrder.indexOf(it.first) }
@@ -3567,6 +3571,9 @@ class MainActivity : Activity() {
                         if (currentScreen == "streams") updateStreamsStatus()
                     }
                 }
+                streamsSession = session
+                streamsListener = listener
+                session.observe(listener)
             }
         }
     }
@@ -3655,6 +3662,9 @@ class MainActivity : Activity() {
         status.setTextColor(if (playbackError != null) Color.rgb(255, 170, 150) else Color.LTGRAY)
     }
 
+    private val streamRowsFirst = 4
+    private val streamRowBatch = 20
+
     private fun insertStreamGroup(addonName: String, streams: List<StremioStreams.Stream>) {
         val list = streamsList ?: return
         val group = LinearLayout(this).apply {
@@ -3665,12 +3675,29 @@ class MainActivity : Activity() {
             setPadding(0, 30, 0, 14)
         })
         var restore: View? = null
-        streams.forEach { stream ->
-            val key = stream.url ?: stream.youtubeId
-            val row = makeStreamRow(stream) { streamFocusKey = key }
-            group.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
-            if (key != null && key == streamFocusKey) restore = row
+        // Rows are made as the viewer gets near them (as NuvioTV's lazy list does): a few per
+        // addon at first, more each time the last one made is reached. Making all ~800 rows of
+        // a popular film at once froze the screen for seconds.
+        var made = 0
+        lateinit var makeMore: (Int) -> Unit
+        makeMore = { count ->
+            val until = minOf(streams.size, made + count)
+            for (i in made until until) {
+                val stream = streams[i]
+                val key = stream.url ?: stream.youtubeId
+                val isLast = i == until - 1
+                val row = makeStreamRow(stream) {
+                    streamFocusKey = key
+                    if (isLast && made < streams.size) group.post { makeMore(streamRowBatch) }
+                }
+                group.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
+                if (key != null && key == streamFocusKey) restore = row
+            }
+            made = until
         }
+        // Back from the player: enough rows to include the stream that was playing.
+        val playedAt = streams.indexOfFirst { (it.url ?: it.youtubeId) == streamFocusKey }
+        makeMore(maxOf(streamRowsFirst, playedAt + 1))
 
         // The stream at the top of the list before this group arrives: while the viewer is
         // still on it (or hasn't reached the list), focus stays on whatever is at the top.
@@ -4119,6 +4146,9 @@ class MainActivity : Activity() {
 
     private fun leaveStreams() {
         streamsRequest++
+        streamsListener?.let { l -> streamsSession?.stop(l) }
+        streamsSession = null
+        streamsListener = null
         when (streamsReturnScreen) {
             "home" -> showHomeScreen()
             "tv_details" -> showTvDetails(lastTvId, lastFilmTitle, lastPosterFile)
@@ -4362,6 +4392,8 @@ class MainActivity : Activity() {
         if (tmdbId != null) lastFilmTmdbId = tmdbId
         if (imdbId != null) lastFilmImdbId = imdbId
         else if (title != lastFilmTitle) lastFilmImdbId = null
+        // Start finding streams now, so they're usually ready when Play is pressed.
+        lastFilmImdbId?.let { StreamSearch.prefetch("movie", it) }
         // Look the IMDb id up now, so Play doesn't have to wait for it.
         if (lastFilmImdbId == null) {
             thread {
@@ -4373,6 +4405,7 @@ class MainActivity : Activity() {
                 Handler(Looper.getMainLooper()).post {
                     if (found != null && lastFilmTitle == title && lastFilmImdbId == null) {
                         lastFilmImdbId = found
+                        StreamSearch.prefetch("movie", found)
                     }
                 }
             }
@@ -4437,7 +4470,11 @@ class MainActivity : Activity() {
                         fillDetailHero(hero, rich)
                         addTrailerButton(hero, rich.trailerKey)
                         // TMDB's exact ids also make Play find the right streams.
-                        if (lastFilmImdbId == null) rich.imdbId?.let { lastFilmImdbId = it; showResume() }
+                        if (lastFilmImdbId == null) rich.imdbId?.let {
+                            lastFilmImdbId = it
+                            StreamSearch.prefetch("movie", it)
+                            showResume()
+                        }
                         lastFilmTmdbId = rich.tmdbId
                         addMoreLikeThis(rich.recommendations)
                     }
@@ -6043,6 +6080,8 @@ class MainActivity : Activity() {
 
     // Prefers the same release (Stremio's bingeGroup) from the same addon, as Stremio does.
     private fun findNextStream(next: NextEpisode) {
+        // Its sources page then opens with the streams already found.
+        StreamSearch.prefetch("series", next.id)
         val current = playingStream
         val addons = StremioStreams.addonsFor("series", next.id)
             .sortedByDescending { it.name == current?.addonName }

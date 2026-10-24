@@ -102,6 +102,10 @@ object NuvioEngine {
             .build()
     }
 
+    // For addon requests (catalogs, streams, subtitles): the same pool and DNS, so repeat
+    // requests to an addon reuse its warm connection instead of a new TLS handshake.
+    val apiClient: OkHttpClient by lazy { httpClient.newBuilder().build() }
+
     private fun dataSourceFactory(context: Context, headers: Map<String, String>): DataSource.Factory {
         val requestHeaders = headers.mapNotNull { (k, v) ->
             val key = k.trim()

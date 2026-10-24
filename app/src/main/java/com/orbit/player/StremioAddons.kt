@@ -48,21 +48,66 @@ object StremioAddons {
     // Addons whose manifest couldn't be read this session, so they aren't asked again.
     private val brokenManifests = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
+    // Manifests are also kept on disk for 6 hours (as NuvioTV does), so after Orbit starts the
+    // first Play doesn't wait for every addon's manifest. An older copy is still used straight
+    // away and refreshed in the background.
+    @Volatile
+    var diskCache: java.io.File? = null
+    private const val manifestTtlMs = 6 * 60 * 60 * 1000L
+    private val refreshing = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private fun cacheFile(manifestUrl: String): java.io.File? = diskCache?.let { dir ->
+        val name = java.security.MessageDigest.getInstance("SHA-1").digest(manifestUrl.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        java.io.File(dir, "manifest-$name.json")
+    }
+
     fun manifest(manifestUrl: String): JSONObject {
         manifests[manifestUrl]?.let { return it }
+        cacheFile(manifestUrl)?.takeIf { it.exists() }?.let { file ->
+            try {
+                val cached = JSONObject(file.readText())
+                manifests[manifestUrl] = cached
+                if (System.currentTimeMillis() - file.lastModified() > manifestTtlMs && refreshing.add(manifestUrl)) {
+                    Thread {
+                        try {
+                            fetchManifest(manifestUrl)
+                        } catch (_: Exception) {
+                        } finally {
+                            refreshing.remove(manifestUrl)
+                        }
+                    }.start()
+                }
+                return cached
+            } catch (_: Exception) {
+                file.delete()
+            }
+        }
         if (manifestUrl in brokenManifests) throw IllegalStateException("Addon unavailable")
         return try {
-            JSONObject(get(manifestUrl, retry = false)).also { manifests[manifestUrl] = it }
+            fetchManifest(manifestUrl)
         } catch (e: Exception) {
             brokenManifests.add(manifestUrl)
             throw e
         }
     }
 
+    private fun fetchManifest(manifestUrl: String): JSONObject {
+        val text = get(manifestUrl, retry = false)
+        val manifest = JSONObject(text)
+        manifests[manifestUrl] = manifest
+        try {
+            cacheFile(manifestUrl)?.writeText(text)
+        } catch (_: Exception) {
+        }
+        return manifest
+    }
+
     // Lets a previously unreachable addon be tried again (e.g. after it's re-added).
     fun forget(manifestUrl: String) {
         manifests.remove(manifestUrl)
         brokenManifests.remove(manifestUrl)
+        cacheFile(manifestUrl)?.delete()
     }
 
     // Reads every addon's manifest at once, so the first Play doesn't wait on them one by one.
@@ -208,27 +253,27 @@ object StremioAddons {
     // so failed requests are retried before giving up.
     // retry = false and a short timeout suit stream requests, where a slow addon shouldn't
     // hold up the others' results.
+    // Through NuvioEngine's shared OkHttp pool, so an addon's connection stays warm between requests.
     internal fun get(url: String, retry: Boolean = true, timeoutMs: Int = 20000): String {
+        val client = NuvioEngine.apiClient.newBuilder()
+            .connectTimeout(minOf(10000, timeoutMs).toLong(), java.util.concurrent.TimeUnit.MILLISECONDS)
+            .readTimeout(timeoutMs.toLong(), java.util.concurrent.TimeUnit.MILLISECONDS)
+            .callTimeout(timeoutMs + 5000L, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .build()
         var lastError: Exception? = null
         for (delayMs in if (retry) listOf(0L, 1500L, 4000L) else listOf(0L)) {
             if (delayMs > 0) Thread.sleep(delayMs)
-            val connection = URL(url).openConnection() as HttpURLConnection
+            val request = okhttp3.Request.Builder().url(url).header("Accept", "application/json").build()
             try {
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("Accept", "application/json")
-                connection.connectTimeout = minOf(10000, timeoutMs)
-                connection.readTimeout = timeoutMs
-
-                val status = connection.responseCode
-                if (status in 200..299) {
-                    return connection.inputStream.bufferedReader().use { it.readText() }
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) return response.body?.string().orEmpty()
+                    lastError = IllegalStateException("Addon HTTP ${response.code}")
+                    if (response.code < 500) throw lastError!!
                 }
-                lastError = IllegalStateException("Addon HTTP $status")
-                if (status < 500) break
             } catch (e: java.io.IOException) {
                 lastError = e
-            } finally {
-                connection.disconnect()
+            } catch (e: IllegalArgumentException) {
+                throw IllegalStateException("Not a valid addon address")
             }
         }
         throw lastError ?: IllegalStateException("Addon request failed")
