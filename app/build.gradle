@@ -44,8 +44,8 @@ android {
         applicationId "com.orbit.player"
         minSdk 26
         targetSdk 35
-        versionCode 3
-        versionName "1.1"
+        versionCode 4
+        versionName "1.2"
         manifestPlaceholders = [appLabel: "Orbit"]
         buildConfigField "String", "TMDB_API_KEY", "\"${tmdbProperties.getProperty('TMDB_API_KEY', '')}\""
         buildConfigField "String", "TRAKT_CLIENT_ID", "\"${traktProperties.getProperty('TRAKT_CLIENT_ID', '')}\""
