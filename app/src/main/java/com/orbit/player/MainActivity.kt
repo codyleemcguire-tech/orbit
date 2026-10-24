@@ -29,46 +29,46 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
 class MainActivity : Activity() {
-    private var player: ExoPlayer? = null
-    private lateinit var root: LinearLayout
-    private lateinit var playerView: PlayerView
-    private var currentScreen = "home"
-    private var lastFilmTitle = ""
-    private var lastPosterFile = ""
-    private var playerReturnScreen = "home"
-    private var selectedSeasonButtonId: Int = View.NO_ID
+    internal var player: ExoPlayer? = null
+    internal lateinit var root: LinearLayout
+    internal lateinit var playerView: PlayerView
+    internal var currentScreen = "home"
+    internal var lastFilmTitle = ""
+    internal var lastPosterFile = ""
+    internal var playerReturnScreen = "home"
+    internal var selectedSeasonButtonId: Int = View.NO_ID
 
     // The scroll view that hosts every non-player screen; the player replaces it while playing.
-    private lateinit var contentScroll: ScrollView
-    private lateinit var homePlayButton: View
-    private lateinit var homeRowsScroll: ScrollView
-    private val homeRowItems = mutableListOf<List<TmdbTest.CatalogueItem>>()
-    private var heroItem: TmdbTest.CatalogueItem? = null
-    private lateinit var heroBackdrop: ImageView
-    private lateinit var heroOverline: TextView
-    private lateinit var heroTitle: TextView
-    private lateinit var heroLogo: ImageView
-    private lateinit var heroChips: LinearLayout
-    private lateinit var heroOverview: TextView
-    private val homeRows = mutableListOf<LinearLayout>()
-    private val homeRowHeadings = mutableListOf<View>()
+    internal lateinit var contentScroll: ScrollView
+    internal lateinit var homePlayButton: View
+    internal lateinit var homeRowsScroll: ScrollView
+    internal val homeRowItems = mutableListOf<List<TmdbTest.CatalogueItem>>()
+    internal var heroItem: TmdbTest.CatalogueItem? = null
+    internal lateinit var heroBackdrop: ImageView
+    internal lateinit var heroOverline: TextView
+    internal lateinit var heroTitle: TextView
+    internal lateinit var heroLogo: ImageView
+    internal lateinit var heroChips: LinearLayout
+    internal lateinit var heroOverview: TextView
+    internal val homeRows = mutableListOf<LinearLayout>()
+    internal val homeRowHeadings = mutableListOf<View>()
 
     // Where focus was on the home screen, so Back lands on the same poster. Row -1 = play button.
-    private var homeFocusRow = -1
+    internal var homeFocusRow = -1
     // The row's heading, so focus returns to the same row even if Continue rows
     // appear or disappear in between.
-    private var homeFocusRowName: String? = null
-    private var homeFocusIndex = 0
-    private var pendingHomeRestore = false
-    private var cachedMovies: List<TmdbTest.CatalogueItem>? = null
-    private var cachedShows: List<TmdbTest.CatalogueItem>? = null
+    internal var homeFocusRowName: String? = null
+    internal var homeFocusIndex = 0
+    internal var pendingHomeRestore = false
+    internal var cachedMovies: List<TmdbTest.CatalogueItem>? = null
+    internal var cachedShows: List<TmdbTest.CatalogueItem>? = null
 
-    private val seasonByShow = mutableMapOf<Int, Int>()
-    private var episodeFocusIndex = -1
-    private var swallowKeyUp = -1
+    internal val seasonByShow = mutableMapOf<Int, Int>()
+    internal var episodeFocusIndex = -1
+    internal var swallowKeyUp = -1
 
     // Streams screen state, kept so returning from the player shows the same list.
-    private var lastFilmImdbId: String? = null
+    internal var lastFilmImdbId: String? = null
 
     // What the streams screen is finding sources for, and the addon id once resolved;
     // the player saves progress against them.
@@ -82,40 +82,40 @@ class MainActivity : Activity() {
         val episode: Int = -1
     )
     // The profile in use; switching profiles recreates the activity with the new one.
-    private val profile by lazy { Profiles.active(this) }
-    private val progress by lazy { WatchProgress(this, Profiles.progressName(profile.id)) }
+    internal val profile by lazy { Profiles.active(this) }
+    internal val progress by lazy { WatchProgress(this, Profiles.progressName(profile.id)) }
     // My List and progress, synced with the Stremio library when signed in.
-    private val library by lazy { StremioLibrary(prefs, progress, BuildConfig.TMDB_API_KEY) }
+    internal val library by lazy { StremioLibrary(prefs, progress, BuildConfig.TMDB_API_KEY) }
     // Trakt scrobbling, watchlist and paused titles, when signed in.
-    private val trakt by lazy { Trakt(prefs, progress, library, BuildConfig.TMDB_API_KEY) }
-    private val subtitleSettings by lazy { SubtitleSettings(prefs) }
-    private val playerSettings by lazy { PlayerSettings(prefs) }
-    private val tmdbSettings by lazy { TmdbSettings(prefs) }
-    private var lastFilmTmdbId: Int? = null
+    internal val trakt by lazy { Trakt(prefs, progress, library, BuildConfig.TMDB_API_KEY) }
+    internal val subtitleSettings by lazy { SubtitleSettings(prefs) }
+    internal val playerSettings by lazy { PlayerSettings(prefs) }
+    internal val tmdbSettings by lazy { TmdbSettings(prefs) }
+    internal var lastFilmTmdbId: Int? = null
 
     // Player overlay: the player plus a Skip intro / Next episode button over it.
-    private lateinit var playerFrame: FrameLayout
-    private lateinit var playerAction: TextView
-    private var playerActionRun: (() -> Unit)? = null
-    private var playingStream: StremioStreams.Stream? = null
-    private var playingSegments: List<IntroDb.Segment> = emptyList()
-    private val autoSkipped = mutableSetOf<String>()
-    private var nextEpisode: NextEpisode? = null
-    private var originalDisplayMode = 0
+    internal lateinit var playerFrame: FrameLayout
+    internal lateinit var playerAction: TextView
+    internal var playerActionRun: (() -> Unit)? = null
+    internal var playingStream: StremioStreams.Stream? = null
+    internal var playingSegments: List<IntroDb.Segment> = emptyList()
+    internal val autoSkipped = mutableSetOf<String>()
+    internal var nextEpisode: NextEpisode? = null
+    internal var originalDisplayMode = 0
 
     // Addon subtitles for the playing video (ranked, best release match first), the one
     // being shown, and the delay applied to it.
-    private var playingAddonSubs: List<StremioSubtitles.Subtitle> = emptyList()
-    private var activeAddonTrack: AddonSubtitleTrack? = null
-    private var subtitleDelayMs = 0L
+    internal var playingAddonSubs: List<StremioSubtitles.Subtitle> = emptyList()
+    internal var activeAddonTrack: AddonSubtitleTrack? = null
+    internal var subtitleDelayMs = 0L
     // Lip sync: + plays the sound later, − earlier (NuvioTV's audio delay). Remembered,
     // since it depends on the TV and sound system rather than the video.
-    private var audioDelayMs: Long
+    internal var audioDelayMs: Long
         get() = prefs.getLong("audio_delay_ms", 0L)
         set(v) { prefs.edit().putLong("audio_delay_ms", v).apply() }
-    private val loadedAddonTracks = mutableMapOf<String, AddonSubtitleTrack>()
-    private var shownAddonLines: List<String>? = null
-    private val addonSubtitleTicker = object : Runnable {
+    internal val loadedAddonTracks = mutableMapOf<String, AddonSubtitleTrack>()
+    internal var shownAddonLines: List<String>? = null
+    internal val addonSubtitleTicker = object : Runnable {
         override fun run() {
             val track = activeAddonTrack ?: return
             val p = player ?: return
@@ -132,80 +132,80 @@ class MainActivity : Activity() {
     }
 
     // The episode after the one playing, and a stream for it once found.
-    private data class NextEpisode(
+    internal data class NextEpisode(
         val target: WatchTarget,
         val id: String,
         @Volatile var stream: StremioStreams.Stream? = null,
         @Volatile var subtitles: List<StremioSubtitles.Subtitle> = emptyList(),
         @Volatile var searched: Boolean = false
     )
-    private var streamsTarget: WatchTarget? = null
-    private var streamsWatchId: String? = null
-    private var streamsSubtitles: java.util.concurrent.Future<List<StremioSubtitles.Subtitle>>? = null
-    private var playingTarget: WatchTarget? = null
-    private var playingId: String? = null
-    private val progressHandler = Handler(Looper.getMainLooper())
-    private val showImdbIds = java.util.concurrent.ConcurrentHashMap<Int, String>()
-    private var streamsReturnScreen = "details"
-    private var streamsLabel = ""
-    private val streamGroups = mutableListOf<Pair<String, List<StremioStreams.Stream>>>()
-    private var streamsPending = -1
-    private var streamsNote: String? = null
+    internal var streamsTarget: WatchTarget? = null
+    internal var streamsWatchId: String? = null
+    internal var streamsSubtitles: java.util.concurrent.Future<List<StremioSubtitles.Subtitle>>? = null
+    internal var playingTarget: WatchTarget? = null
+    internal var playingId: String? = null
+    internal val progressHandler = Handler(Looper.getMainLooper())
+    internal val showImdbIds = java.util.concurrent.ConcurrentHashMap<Int, String>()
+    internal var streamsReturnScreen = "details"
+    internal var streamsLabel = ""
+    internal val streamGroups = mutableListOf<Pair<String, List<StremioStreams.Stream>>>()
+    internal var streamsPending = -1
+    internal var streamsNote: String? = null
     // The focused stream's link, so focus stays on it while other addons' results arrive.
-    private var streamFocusKey: String? = null
-    private var streamsStatus: TextView? = null
-    private var streamsList: LinearLayout? = null
-    private var streamsBack: View? = null
-    private var streamAddonOrder: List<String> = emptyList()
+    internal var streamFocusKey: String? = null
+    internal var streamsStatus: TextView? = null
+    internal var streamsList: LinearLayout? = null
+    internal var streamsBack: View? = null
+    internal var streamAddonOrder: List<String> = emptyList()
     // Selected addon tab on the streams screen; null = All.
-    private var streamTab: String? = null
-    private var streamTabs: LinearLayout? = null
+    internal var streamTab: String? = null
+    internal var streamTabs: LinearLayout? = null
     // False until the viewer presses a key on the streams screen; until then focus follows
     // the top stream as slower addons' results are inserted above the fast ones.
-    private var streamsTouched = false
-    private var streamsRequest = 0
-    private var playbackError: String? = null
+    internal var streamsTouched = false
+    internal var streamsRequest = 0
+    internal var playbackError: String? = null
     // All stream addons are asked at once; each answers within a few seconds.
-    private val streamLoader = java.util.concurrent.Executors.newFixedThreadPool(6)
+    internal val streamLoader = java.util.concurrent.Executors.newFixedThreadPool(6)
     // The stream search the sources page is showing, and its listener (see StreamSearch).
-    private var streamsSession: StreamSearch.Session? = null
-    private var streamsListener: StreamSearch.Listener? = null
+    internal var streamsSession: StreamSearch.Session? = null
+    internal var streamsListener: StreamSearch.Listener? = null
 
     // Which top-level screen details pages go back to.
-    private var detailsReturnScreen = "home"
+    internal var detailsReturnScreen = "home"
 
     // Discover state, kept so returning from a title restores filters, results and position.
     // Five larger posters per row, beside the info panel.
-    private val discoverColumns = 5
-    private val discoverPosterWidth = 224
-    private var discoverCatalogs: List<StremioAddons.Catalog>? = null
-    private var discoverType = "movie"
-    private var discoverCatalogKey: String? = null
-    private var discoverGenre: String? = null
-    private val discoverResults = mutableListOf<StremioAddons.Meta>()
-    private var discoverHasMore = true
-    private var discoverLoading = false
-    private var discoverFocusIndex = -1
+    internal val discoverColumns = 5
+    internal val discoverPosterWidth = 224
+    internal var discoverCatalogs: List<StremioAddons.Catalog>? = null
+    internal var discoverType = "movie"
+    internal var discoverCatalogKey: String? = null
+    internal var discoverGenre: String? = null
+    internal val discoverResults = mutableListOf<StremioAddons.Meta>()
+    internal var discoverHasMore = true
+    internal var discoverLoading = false
+    internal var discoverFocusIndex = -1
     // Bumped whenever the filters change, so a page that arrives late is ignored.
-    private var discoverRequest = 0
+    internal var discoverRequest = 0
     // Paging position in the addon's list. Kept apart from the result count because addons
     // filter some titles out of a page and reshuffle lists between requests.
-    private var discoverOffset = 0
-    private var discoverStep = 0
-    private var discoverEmptyPages = 0
-    private lateinit var discoverList: androidx.recyclerview.widget.RecyclerView
-    private lateinit var discoverHeader: LinearLayout
+    internal var discoverOffset = 0
+    internal var discoverStep = 0
+    internal var discoverEmptyPages = 0
+    internal lateinit var discoverList: androidx.recyclerview.widget.RecyclerView
+    internal lateinit var discoverHeader: LinearLayout
     // Poster index to focus once it's on screen; -1 = the Type picker, -2 = nothing.
-    private var pendingDiscoverFocus = -2
-    private lateinit var discoverStatus: TextView
-    private lateinit var typePicker: TextView
-    private lateinit var catalogPicker: TextView
-    private lateinit var genrePicker: TextView
+    internal var pendingDiscoverFocus = -2
+    internal lateinit var discoverStatus: TextView
+    internal lateinit var typePicker: TextView
+    internal lateinit var catalogPicker: TextView
+    internal lateinit var genrePicker: TextView
 
     // Older code refers to these; they now come from the design system (Ui.kt).
-    private val bg = Ui.surface
-    private val accent = Ui.accent
-    private val testUrl =
+    internal val bg = Ui.surface
+    internal val accent = Ui.accent
+    internal val testUrl =
         "https://storage.googleapis.com/exoplayer-test-media-0/BigBuckBunny_320x180.mp4"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -270,7 +270,7 @@ class MainActivity : Activity() {
     }
 
     // The logo fades in, holds a moment, and the page fades into what comes next.
-    private fun showSplash(then: () -> Unit) {
+    internal fun showSplash(then: () -> Unit) {
         currentScreen = "splash"
         val logo = TextView(this).apply {
             text = android.text.SpannableString("orbit.").apply {
@@ -303,9 +303,9 @@ class MainActivity : Activity() {
     }
 
     // App-private storage for the Stremio session key, addons and settings: the profile's own.
-    private val prefs by lazy { Profiles.prefs(this, profile.id) }
+    internal val prefs by lazy { Profiles.prefs(this, profile.id) }
 
-    private fun savedAddons(): List<StremioAccount.Addon> {
+    internal fun savedAddons(): List<StremioAccount.Addon> {
         val json = prefs.getString("stremio_addons", null) ?: return emptyList()
         return try {
             val array = org.json.JSONArray(json)
@@ -320,7 +320,7 @@ class MainActivity : Activity() {
 
     // Addons added in Orbit by manifest URL. They live only in Orbit, alongside the ones
     // synced from the Stremio account, and are never written to the account.
-    private fun localAddons(): List<StremioAccount.Addon> {
+    internal fun localAddons(): List<StremioAccount.Addon> {
         val json = prefs.getString("local_addons", null) ?: return emptyList()
         return try {
             val array = org.json.JSONArray(json)
@@ -333,7 +333,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun saveLocalAddons(addons: List<StremioAccount.Addon>) {
+    internal fun saveLocalAddons(addons: List<StremioAccount.Addon>) {
         val array = org.json.JSONArray()
         addons.forEach { array.put(org.json.JSONObject().put("name", it.name).put("url", it.url)) }
         prefs.edit().putString("local_addons", array.toString()).apply()
@@ -341,7 +341,7 @@ class MainActivity : Activity() {
         resetDiscover()
     }
 
-    private fun applySavedAddons() {
+    internal fun applySavedAddons() {
         val synced =
             if (prefs.contains("stremio_auth_key")) savedAddons().map { it.url } else emptyList()
         // Account addons first (Stremio's order), then Orbit's own; no duplicates.
@@ -350,7 +350,7 @@ class MainActivity : Activity() {
 
     // Accepts what people paste from addon sites: stremio:// links, or a URL without
     // /manifest.json. Returns null when it can't be a manifest URL.
-    private fun normalizeManifestUrl(input: String): String? {
+    internal fun normalizeManifestUrl(input: String): String? {
         // Pasted text can carry spaces or line breaks from wrapping.
         var url = input.trim().replace(Regex("\\s+"), "")
         if (url.startsWith("stremio://", ignoreCase = true)) url = "https://" + url.substring(10)
@@ -372,7 +372,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showAddAddon(onDone: (String?) -> Unit) {
+    internal fun showAddAddon(onDone: (String?) -> Unit) {
         val field = android.widget.EditText(this).apply {
             hint = "https://…/manifest.json"
             isSingleLine = true
@@ -413,7 +413,7 @@ class MainActivity : Activity() {
     // Checks and saves an addon typed on the TV or sent from the phone page. Call off the
     // main thread; returns the message to show. Only addons whose manifest really loads
     // and that offer something are saved.
-    private fun addLocalAddon(input: String): String {
+    internal fun addLocalAddon(input: String): String {
         val url = normalizeManifestUrl(input) ?: return "That doesn't look like an addon URL."
         if (url in StremioAddons.addonUrls) return "That addon is already installed."
         return try {
@@ -442,7 +442,7 @@ class MainActivity : Activity() {
     }
 
     // Shows a QR code for the phone page; the server runs only while this is open.
-    private fun showPhoneLink(
+    internal fun showPhoneLink(
         onDone: (String?) -> Unit,
         title: String = "Add addon from your phone",
         instructions: String = "Scan with your phone's camera, paste the addon URL and tap Add.",
@@ -512,7 +512,7 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun confirmRemoveAddon(addon: StremioAccount.Addon, onDone: (String?) -> Unit) {
+    internal fun confirmRemoveAddon(addon: StremioAccount.Addon, onDone: (String?) -> Unit) {
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Remove ${addon.name}?")
             .setMessage("It's removed from Orbit only. You can add it again with its URL.")
@@ -525,7 +525,7 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun clearStremioSession() {
+    internal fun clearStremioSession() {
         prefs.edit()
             .remove("stremio_auth_key")
             .remove("stremio_email")
@@ -536,7 +536,7 @@ class MainActivity : Activity() {
 
     // Call off the main thread. Refreshes the addon list from the signed-in Stremio
     // account; if Stremio can't be reached, the last synced list stays in use.
-    private fun syncStremioAddons(): String {
+    internal fun syncStremioAddons(): String {
         val authKey = prefs.getString("stremio_auth_key", null) ?: return "Not signed in."
         return try {
             val addons = StremioAccount.fetchAddons(authKey)
@@ -556,7 +556,7 @@ class MainActivity : Activity() {
     }
 
     // Forget Discover's catalogs so the next visit loads them from the new addon list.
-    private fun resetDiscover() {
+    internal fun resetDiscover() {
         discoverRequest++
         searchCatalogsCache = null
         discoverCatalogs = null
@@ -566,10 +566,10 @@ class MainActivity : Activity() {
     }
 
     // A few downloads at a time, so a full Discover grid doesn't start a thread per poster.
-    private val imageLoader = java.util.concurrent.Executors.newFixedThreadPool(4)
+    internal val imageLoader = java.util.concurrent.Executors.newFixedThreadPool(4)
 
     // Recently shown posters, so revisiting a screen doesn't download them again.
-    private val posterCache = object : android.util.LruCache<String, android.graphics.Bitmap>(
+    internal val posterCache = object : android.util.LruCache<String, android.graphics.Bitmap>(
         (Runtime.getRuntime().maxMemory() / 8).toInt()
     ) {
         override fun sizeOf(key: String, value: android.graphics.Bitmap) = value.byteCount
@@ -578,7 +578,7 @@ class MainActivity : Activity() {
     // posterPath is a TMDB path ("/abc.jpg") or a full URL from an addon. targetWidth > 0
     // decodes the image at that width: addons often send 600x900 posters for 190 px cards,
     // and drawing those scaled down every frame is what made scrolling stutter.
-    private fun loadPosterImage(
+    internal fun loadPosterImage(
         image: ImageView,
         posterPath: String?,
         tmdbSize: String = "w342",
@@ -669,7 +669,7 @@ class MainActivity : Activity() {
 
     // Rounds the corners once while decoding, instead of clipping every poster on every
     // frame, which this stick's Mali GPU handles poorly.
-    private fun roundCorners(
+    internal fun roundCorners(
         source: android.graphics.Bitmap,
         radius: Float
     ): android.graphics.Bitmap {
@@ -690,11 +690,11 @@ class MainActivity : Activity() {
         return rounded
     }
 
-    private fun posterPlaceholder() = Ui.rounded(Ui.surface, 14f)
+    internal fun posterPlaceholder() = Ui.rounded(Ui.surface, 14f)
 
     // Thin bar showing how much of a title has been watched; laid over the bottom of a
     // poster or episode thumbnail.
-    private fun makeProgressBar(width: Int, fraction: Float): FrameLayout =
+    internal fun makeProgressBar(width: Int, fraction: Float): FrameLayout =
         FrameLayout(this).apply {
             background = Ui.rounded(Color.argb(150, 0, 0, 0), 6f)
             addView(View(context).apply { background = Ui.rounded(Ui.accent, 6f) },
@@ -702,7 +702,7 @@ class MainActivity : Activity() {
         }
 
     // A horizontal row that lets focused posters grow past its edges instead of clipping them.
-    private fun makePosterRow(): Pair<HorizontalScrollView, LinearLayout> {
+    internal fun makePosterRow(): Pair<HorizontalScrollView, LinearLayout> {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             clipChildren = false
@@ -722,7 +722,7 @@ class MainActivity : Activity() {
         return scroll to row
     }
 
-    private fun addPosterRow(scroll: HorizontalScrollView, into: LinearLayout = root) {
+    internal fun addPosterRow(scroll: HorizontalScrollView, into: LinearLayout = root) {
         // Negative margins line the first poster up with the row heading.
         into.addView(scroll, LinearLayout.LayoutParams(-1, -2).apply {
             leftMargin = -28
@@ -732,7 +732,7 @@ class MainActivity : Activity() {
 
     // Poster used by every row and the Discover grid: on focus it zooms, gets a bright ring
     // and coloured glow, shows its title and year underneath, and dims the rest of its row.
-    private class PosterCard(
+    internal class PosterCard(
         val card: LinearLayout,
         val frame: FrameLayout,
         val image: ImageView,
@@ -740,7 +740,7 @@ class MainActivity : Activity() {
         val width: Int
     )
 
-    private fun makePosterCard(
+    internal fun makePosterCard(
         title: String,
         year: String,
         tmdbPosterPath: String?,
@@ -756,7 +756,7 @@ class MainActivity : Activity() {
 
     // Builds an empty card; bindPosterCard fills it. The Discover grid reuses cards this way.
     // width is the poster's width in pixels; height follows the 2:3 poster shape.
-    private fun createPosterCard(dimRow: Boolean = true, width: Int = 190): PosterCard {
+    internal fun createPosterCard(dimRow: Boolean = true, width: Int = 190): PosterCard {
         val frame = FrameLayout(this).apply {
             // No background or clipping: the poster bitmap is pre-rounded. The outline is
             // only there to shape the glow when focused.
@@ -824,7 +824,7 @@ class MainActivity : Activity() {
         return PosterCard(card, frame, image, caption, width)
     }
 
-    private fun bindPosterCard(
+    internal fun bindPosterCard(
         poster: PosterCard,
         title: String,
         year: String,
@@ -871,7 +871,7 @@ class MainActivity : Activity() {
 
     // Left on the first poster and right on the last stay put, instead of focus
     // jumping to whatever is nearest in that direction (e.g. the tabs at the top).
-    private fun pinRowEnds(row: ViewGroup) {
+    internal fun pinRowEnds(row: ViewGroup) {
         for (i in 0 until row.childCount) {
             val child = row.getChildAt(i)
             if (child.id == View.NO_ID) child.id = View.generateViewId()
@@ -880,7 +880,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun dimOtherPosters(card: View, focused: Boolean) {
+    internal fun dimOtherPosters(card: View, focused: Boolean) {
         val row = card.parent as? ViewGroup ?: return
         if (focused) {
             for (i in 0 until row.childCount) {
@@ -901,7 +901,7 @@ class MainActivity : Activity() {
 
     // Solid buttons (Play): white ring and slight zoom when focused.
     // Older solid buttons (Play on details pages) restyled as the primary button.
-    private fun styleButtonFocus(button: View) {
+    internal fun styleButtonFocus(button: View) {
         val text = button as? TextView
         text?.typeface = Ui.font("semibold")
         val paint = { focused: Boolean ->
@@ -918,7 +918,7 @@ class MainActivity : Activity() {
 
     // Text links ("‹ BACK TO …"): a filled pill when focused.
     // Back links ("‹ Back to Discover"): quiet text that becomes a white pill on focus.
-    private fun styleLinkFocus(link: TextView) {
+    internal fun styleLinkFocus(link: TextView) {
         link.setPadding(22, 12, 26, 12)
         link.textSize = 16f
         link.typeface = Ui.font("semibold")
@@ -932,7 +932,7 @@ class MainActivity : Activity() {
         link.setOnFocusChangeListener { _, focused -> paint(focused) }
     }
 
-    private fun chainFocus(
+    internal fun chainFocus(
         first: View.OnFocusChangeListener?,
         second: (View, Boolean) -> Unit
     ) = View.OnFocusChangeListener { view, focused ->
@@ -940,7 +940,7 @@ class MainActivity : Activity() {
         second(view, focused)
     }
 
-    private fun rememberHomeFocus(card: View) {
+    internal fun rememberHomeFocus(card: View) {
         val row = card.parent as? LinearLayout ?: return
         val rowIndex = homeRows.indexOfFirst { it === row }
         if (currentScreen != "home" || rowIndex < 0) return
@@ -951,7 +951,7 @@ class MainActivity : Activity() {
         homeFocusIndex = row.indexOfChild(card)
     }
 
-    private fun focusHomeRow(rowIndex: Int, preferredIndex: Int, animate: Boolean = true) {
+    internal fun focusHomeRow(rowIndex: Int, preferredIndex: Int, animate: Boolean = true) {
         val row = homeRows.getOrNull(rowIndex) ?: return
         if (row.childCount == 0) return
         row.getChildAt(preferredIndex.coerceIn(0, row.childCount - 1)).requestFocus()
@@ -973,7 +973,7 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun fillHomeRow(rowIndex: Int, cards: List<View>) {
+    internal fun fillHomeRow(rowIndex: Int, cards: List<View>) {
         val row = homeRows[rowIndex]
         val hadFocus = row.findFocus() != null
         row.removeAllViews()
@@ -996,7 +996,7 @@ class MainActivity : Activity() {
 
     // Top bar shared by HOME, DISCOVER and SETTINGS: wordmark, then the tabs. Returns the
     // tabs so each screen can point their Down at its first control.
-    private fun addHeader(activeTab: String, into: LinearLayout = root): List<TextView> {
+    internal fun addHeader(activeTab: String, into: LinearLayout = root): List<TextView> {
         val tabs = mutableListOf<TextView>()
         val headerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1074,24 +1074,24 @@ class MainActivity : Activity() {
         return tabs
     }
 
-    private fun pointTabsDownTo(tabs: List<TextView>, target: View) {
+    internal fun pointTabsDownTo(tabs: List<TextView>, target: View) {
         if (target.id == View.NO_ID) target.id = View.generateViewId()
         tabs.forEach { it.nextFocusDownId = target.id }
     }
 
     // A faint cool glow in the top-left corner over the near-black background.
     // Plain near-black: backdrops fade into it without a visible edge.
-    private fun screenBackground() = android.graphics.drawable.ColorDrawable(Ui.background)
+    internal fun screenBackground() = android.graphics.drawable.ColorDrawable(Ui.background)
 
     // Discover shows its own recycling grid; the other screens live in contentScroll.
-    private fun useContentScroll() {
+    internal fun useContentScroll() {
         stopDiscoverFocusWatcher()
         if (contentScroll.parent == null) setContentView(contentScroll)
     }
 
-    private var discoverFocusWatcher: android.view.ViewTreeObserver.OnGlobalFocusChangeListener? = null
+    internal var discoverFocusWatcher: android.view.ViewTreeObserver.OnGlobalFocusChangeListener? = null
 
-    private fun stopDiscoverFocusWatcher() {
+    internal fun stopDiscoverFocusWatcher() {
         discoverFocusWatcher?.let {
             window.decorView.viewTreeObserver.removeOnGlobalFocusChangeListener(it)
         }
@@ -1102,10 +1102,10 @@ class MainActivity : Activity() {
     // The hero follows the focused poster after a short pause, like Google TV.
     // The built HOME is kept and put back as-is when nothing on it has changed: rebuilding
     // it (hundreds of collection tiles) froze the screen for over a second on Back.
-    private var homeFrame: FrameLayout? = null
-    private var homeDirty = true
+    internal var homeFrame: FrameLayout? = null
+    internal var homeDirty = true
 
-    private fun showHomeScreen() {
+    internal fun showHomeScreen() {
         currentScreen = "home"
         detailsReturnScreen = "home"
         actorPages.clear()
@@ -1272,7 +1272,7 @@ class MainActivity : Activity() {
         else showHero(heroItem, immediate = true)
     }
 
-    private fun restoreHomeFocus() {
+    internal fun restoreHomeFocus() {
         // Return to the poster the viewer left from; a row that is still loading
         // picks this up in fillHomeRow once its posters arrive.
         // Find the remembered row by name; a Continue row that has since emptied falls back
@@ -1289,7 +1289,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun loadHomeRow(
+    internal fun loadHomeRow(
         index: Int,
         kind: String,
         cached: List<TmdbTest.CatalogueItem>?,
@@ -1321,7 +1321,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun fillHomeItems(index: Int, items: List<TmdbTest.CatalogueItem>) {
+    internal fun fillHomeItems(index: Int, items: List<TmdbTest.CatalogueItem>) {
         homeRowItems[index] = items
         fillHomeRow(index, items.map { item ->
             makePosterCard(item.title, item.releaseYear, item.posterPath, dimRow = false) { openHomeItem(item) }.also { card ->
@@ -1338,12 +1338,12 @@ class MainActivity : Activity() {
 
     // ---- Nuvio collections ----------------------------------------------------------------
 
-    private val collectionItems = java.util.IdentityHashMap<TmdbTest.CatalogueItem, Pair<NuvioCollections.Collection, NuvioCollections.Folder>>()
-    private var openFolder: Pair<NuvioCollections.Collection, NuvioCollections.Folder>? = null
-    private val folderCache = mutableMapOf<String, List<NuvioCollections.Loaded>>()
-    private var folderFocus: Pair<Int, Int>? = null
+    internal val collectionItems = java.util.IdentityHashMap<TmdbTest.CatalogueItem, Pair<NuvioCollections.Collection, NuvioCollections.Folder>>()
+    internal var openFolder: Pair<NuvioCollections.Collection, NuvioCollections.Folder>? = null
+    internal val folderCache = mutableMapOf<String, List<NuvioCollections.Loaded>>()
+    internal var folderFocus: Pair<Int, Int>? = null
 
-    private fun savedCollections(): List<NuvioCollections.Collection> = try {
+    internal fun savedCollections(): List<NuvioCollections.Collection> = try {
         prefs.getString("nuvio_collections", null)?.let { NuvioCollections.parse(it) }.orEmpty()
     } catch (_: Exception) {
         emptyList()
@@ -1351,7 +1351,7 @@ class MainActivity : Activity() {
 
     // Imports a Nuvio export (the JSON itself, or a link to it), replacing collections with
     // the same id. Call off the main thread; returns the message to show.
-    private fun importCollections(input: String): String {
+    internal fun importCollections(input: String): String {
         val text = input.trim()
         val json = try {
             if (text.startsWith("http")) StremioAddons.get(text, retry = false) else text
@@ -1388,7 +1388,7 @@ class MainActivity : Activity() {
             (if (trakt > 0) " $trakt Trakt sources will be skipped." else "")
     }
 
-    private fun removeCollection(id: String) {
+    internal fun removeCollection(id: String) {
         val existing = try {
             org.json.JSONArray(prefs.getString("nuvio_collections", "[]"))
         } catch (_: Exception) {
@@ -1405,7 +1405,7 @@ class MainActivity : Activity() {
 
     // Nuvio's "Export File" writes nuvio-collections.json to the stick's Downloads folder.
     // Reading another app's file there needs Android's all-files access for Orbit.
-    private fun importNuvioExportFile(): String {
+    internal fun importNuvioExportFile(): String {
         if (Build.VERSION.SDK_INT >= 30 && !android.os.Environment.isExternalStorageManager()) {
             try {
                 startActivity(android.content.Intent(
@@ -1429,7 +1429,7 @@ class MainActivity : Activity() {
     }
 
     // A collection on HOME: one wide tile per folder, using Nuvio's cover image or emoji.
-    private fun fillCollectionRow(index: Int, collection: NuvioCollections.Collection) {
+    internal fun fillCollectionRow(index: Int, collection: NuvioCollections.Collection) {
         val items = collection.folders.map { folder ->
             TmdbTest.CatalogueItem(
                 id = -1,
@@ -1453,7 +1453,7 @@ class MainActivity : Activity() {
         if (heroItem == null && index == 0) showHero(items.firstOrNull(), immediate = true)
     }
 
-    private fun makeCollectionTile(rowIndex: Int, item: TmdbTest.CatalogueItem): View {
+    internal fun makeCollectionTile(rowIndex: Int, item: TmdbTest.CatalogueItem): View {
         val folder = collectionItems.getValue(item).second
         return makeFolderTile(folder, item.title) { openHomeItem(item) }.also { tile ->
             tile.onFocusChangeListener = chainFocus(tile.onFocusChangeListener) { card, focused ->
@@ -1479,12 +1479,12 @@ class MainActivity : Activity() {
         }
     }
 
-    private var pendingCover: Runnable? = null
-    private val COLLECTION_BATCH = 24
+    internal var pendingCover: Runnable? = null
+    internal val COLLECTION_BATCH = 24
 
     // Starts loading covers of folder tiles within about one screen of view. Runs after
     // HOME is built and whenever anything on it scrolls.
-    private fun runLazyLoads() {
+    internal fun runLazyLoads() {
         if (currentScreen != "home") return
         val screenW = resources.displayMetrics.widthPixels
         val screenH = resources.displayMetrics.heightPixels
@@ -1506,10 +1506,10 @@ class MainActivity : Activity() {
         }
     }
 
-    private val lazyLoadPass = Runnable { runLazyLoads() }
-    private val lazyLoadHandler = Handler(Looper.getMainLooper())
+    internal val lazyLoadPass = Runnable { runLazyLoads() }
+    internal val lazyLoadHandler = Handler(Looper.getMainLooper())
 
-    private fun makeFolderTile(folder: NuvioCollections.Folder, title: String, onClick: () -> Unit): LinearLayout {
+    internal fun makeFolderTile(folder: NuvioCollections.Folder, title: String, onClick: () -> Unit): LinearLayout {
         val w = 340
         val h = 192
         val frame = FrameLayout(this).apply {
@@ -1570,18 +1570,18 @@ class MainActivity : Activity() {
 
     // A folder, laid out like Discover: a poster grid with the info panel on the right.
     // Instead of Discover's pickers it has a tab per source (plus All), as in Nuvio.
-    private var folderLoaded: MutableList<NuvioCollections.Loaded?> = mutableListOf()
-    private var folderTab = -1 // -1 = All, else the source's index
-    private var folderShown: List<StremioAddons.Meta> = emptyList()
-    private var folderFocusIndex = -1
-    private var folderPendingFocus = -2 // index to focus once bound; -1 = the tabs
-    private var folderRequest = 0
-    private lateinit var folderList: androidx.recyclerview.widget.RecyclerView
-    private lateinit var folderHeader: LinearLayout
-    private lateinit var folderTabs: LinearLayout
-    private lateinit var folderStatus: TextView
+    internal var folderLoaded: MutableList<NuvioCollections.Loaded?> = mutableListOf()
+    internal var folderTab = -1 // -1 = All, else the source's index
+    internal var folderShown: List<StremioAddons.Meta> = emptyList()
+    internal var folderFocusIndex = -1
+    internal var folderPendingFocus = -2 // index to focus once bound; -1 = the tabs
+    internal var folderRequest = 0
+    internal lateinit var folderList: androidx.recyclerview.widget.RecyclerView
+    internal lateinit var folderHeader: LinearLayout
+    internal lateinit var folderTabs: LinearLayout
+    internal lateinit var folderStatus: TextView
 
-    private fun showFolderScreen(collection: NuvioCollections.Collection, folder: NuvioCollections.Folder) {
+    internal fun showFolderScreen(collection: NuvioCollections.Collection, folder: NuvioCollections.Folder) {
         val key = "${collection.id}/${folder.id}"
         val returning = openFolder?.let { "${it.first.id}/${it.second.id}" } == key && folderFocusIndex >= 0
         currentScreen = "collection"
@@ -1705,7 +1705,7 @@ class MainActivity : Activity() {
     }
 
     // Rebuilds the tabs and the grid's titles for the selected tab.
-    private fun updateFolder() {
+    internal fun updateFolder() {
         val folder = openFolder?.second ?: return
         val sources = folder.sources
         if (folderAll.isEmpty() && folderLoaded.all { it != null }) {
@@ -1769,16 +1769,16 @@ class MainActivity : Activity() {
         }
     }
 
-    private var folderUpTarget = View.NO_ID
+    internal var folderUpTarget = View.NO_ID
     // All tab's titles once every source's first page is in. Later pages are appended to
     // the end, so what the viewer has already scrolled past never moves.
-    private val folderAll = mutableListOf<StremioAddons.Meta>()
-    private val folderAllIds = mutableSetOf<String>()
-    private val folderPaging = mutableSetOf<Int>()
-    private val folderAllCache = mutableMapOf<String, List<StremioAddons.Meta>>()
+    internal val folderAll = mutableListOf<StremioAddons.Meta>()
+    internal val folderAllIds = mutableSetOf<String>()
+    internal val folderPaging = mutableSetOf<Int>()
+    internal val folderAllCache = mutableMapOf<String, List<StremioAddons.Meta>>()
 
     // Fetches the next page of the sources behind the current tab (every source on All).
-    private fun loadMoreFolder() {
+    internal fun loadMoreFolder() {
         val folder = openFolder?.second ?: return
         if (folderLoaded.any { it == null }) return
         val key = openFolder!!.let { "${it.first.id}/${it.second.id}" }
@@ -1817,7 +1817,7 @@ class MainActivity : Activity() {
     }
 
     // Updates tab counts and the status line without rebuilding anything focusable.
-    private fun refreshFolderLabels() {
+    internal fun refreshFolderLabels() {
         for (j in 0 until folderTabs.childCount) {
             val tab = folderTabs.getChildAt(j) as TextView
             val i = tab.tag as Int
@@ -1829,7 +1829,7 @@ class MainActivity : Activity() {
             if (folderPaging.isNotEmpty()) " · loading more..." else ""
     }
 
-    private inner class FolderAdapter :
+    internal inner class FolderAdapter :
         androidx.recyclerview.widget.RecyclerView.Adapter<FolderAdapter.Holder>() {
 
         inner class Holder(view: View, val poster: PosterCard?) :
@@ -1905,10 +1905,10 @@ class MainActivity : Activity() {
 
     // Continue watching: one poster per unfinished title with a progress bar. Each becomes
     // a hero item so the hero can show it (and its Play resumes it).
-    private val continueItems = java.util.IdentityHashMap<TmdbTest.CatalogueItem, WatchProgress.Entry>()
-    private val continueBackdrops = java.util.concurrent.ConcurrentHashMap<String, String>()  // "" = none found
+    internal val continueItems = java.util.IdentityHashMap<TmdbTest.CatalogueItem, WatchProgress.Entry>()
+    internal val continueBackdrops = java.util.concurrent.ConcurrentHashMap<String, String>()  // "" = none found
 
-    private fun fillContinueRow(index: Int, entries: List<WatchProgress.Entry>) {
+    internal fun fillContinueRow(index: Int, entries: List<WatchProgress.Entry>) {
         val items = entries.map { entry ->
             val left = ((entry.durationMs - entry.positionMs) / 60_000).coerceAtLeast(1)
             TmdbTest.CatalogueItem(
@@ -1969,7 +1969,7 @@ class MainActivity : Activity() {
         if (heroItem == null && index == 0) showHero(items.firstOrNull(), immediate = true)
     }
 
-    private fun showContinueOptions(entry: WatchProgress.Entry, card: View) {
+    internal fun showContinueOptions(entry: WatchProgress.Entry, card: View) {
         val title = entry.title
         val options = listOf(
             if (entry.type == "series") "Remove show from Continue watching" else "Remove from Continue watching",
@@ -1999,7 +1999,7 @@ class MainActivity : Activity() {
 
     // Takes the card out of its row straight away (no full HOME rebuild); a row left
     // empty is rebuilt away.
-    private fun removeContinueCard(card: View) {
+    internal fun removeContinueCard(card: View) {
         val row = card.parent as? LinearLayout ?: return
         val index = row.indexOfChild(card)
         val rowIndex = homeRows.indexOf(row)
@@ -2018,7 +2018,7 @@ class MainActivity : Activity() {
 
     // Picks up where the viewer left off: back to the streams for that movie or episode,
     // where choosing a stream offers to resume.
-    private fun resumeEntry(entry: WatchProgress.Entry) {
+    internal fun resumeEntry(entry: WatchProgress.Entry) {
         lastFilmTitle = entry.title
         lastPosterFile = entry.poster
         val target = WatchTarget(
@@ -2034,7 +2034,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun openHomeItem(item: TmdbTest.CatalogueItem) {
+    internal fun openHomeItem(item: TmdbTest.CatalogueItem) {
         collectionItems[item]?.let { (collection, folder) ->
             showFolderScreen(collection, folder)
             return
@@ -2054,9 +2054,9 @@ class MainActivity : Activity() {
 
     // ---- My List ----
 
-    private val myListItems = java.util.IdentityHashMap<TmdbTest.CatalogueItem, StremioLibrary.ListItem>()
+    internal val myListItems = java.util.IdentityHashMap<TmdbTest.CatalogueItem, StremioLibrary.ListItem>()
 
-    private fun fillMyListRow(index: Int, list: List<StremioLibrary.ListItem>) {
+    internal fun fillMyListRow(index: Int, list: List<StremioLibrary.ListItem>) {
         val items = list.map { saved ->
             TmdbTest.CatalogueItem(
                 id = saved.tmdbId,
@@ -2074,7 +2074,7 @@ class MainActivity : Activity() {
     }
 
     // Opens a saved title's page; a show needs its TMDB id, looked up if it isn't known yet.
-    private fun openListItem(saved: StremioLibrary.ListItem) {
+    internal fun openListItem(saved: StremioLibrary.ListItem) {
         if (saved.type != "series") {
             showFilmDetails(saved.name, saved.poster, imdbId = saved.id, tmdbId = saved.tmdbId.takeIf { it > 0 })
             return
@@ -2100,7 +2100,7 @@ class MainActivity : Activity() {
 
     // "+ My List" on a film or show page. imdbId finds the title's IMDb id (looked up
     // off the main thread when the page doesn't know it yet).
-    private fun addMyListButton(hero: DetailHero, type: String, title: String, poster: String, tmdbId: () -> Int, imdbId: () -> String?) {
+    internal fun addMyListButton(hero: DetailHero, type: String, title: String, poster: String, tmdbId: () -> Int, imdbId: () -> String?) {
         lateinit var button: TextView
         fun paint(id: String?) {
             button.text = if (library.inList(id)) "✓  My List" else "+  My List"
@@ -2139,7 +2139,7 @@ class MainActivity : Activity() {
     }
 
     // Play on the hero: a film goes straight to its streams; a series opens its episodes.
-    private fun playHeroItem(item: TmdbTest.CatalogueItem) {
+    internal fun playHeroItem(item: TmdbTest.CatalogueItem) {
         collectionItems[item]?.let { (collection, folder) ->
             showFolderScreen(collection, folder)
             return
@@ -2160,10 +2160,10 @@ class MainActivity : Activity() {
         }
     }
 
-    private val heroHandler = Handler(Looper.getMainLooper())
+    internal val heroHandler = Handler(Looper.getMainLooper())
 
     // Waits ~350 ms so moving quickly along a row doesn't load every backdrop on the way.
-    private fun showHero(item: TmdbTest.CatalogueItem?, immediate: Boolean = false) {
+    internal fun showHero(item: TmdbTest.CatalogueItem?, immediate: Boolean = false) {
         heroHandler.removeCallbacksAndMessages(null)
         val apply = {
             if (currentScreen == "home") {
@@ -2232,7 +2232,7 @@ class MainActivity : Activity() {
         if (immediate) apply() else heroHandler.postDelayed({ apply() }, 350)
     }
 
-    private fun backLabel() = when (detailsReturnScreen) {
+    internal fun backLabel() = when (detailsReturnScreen) {
         "discover" -> "‹   Discover"
         "search" -> "‹   Search"
         "collection" -> "‹   ${openFolder?.second?.title ?: "Collection"}"
@@ -2240,7 +2240,7 @@ class MainActivity : Activity() {
         else -> "‹   Home"
     }
 
-    private fun leaveDetails() {
+    internal fun leaveDetails() {
         when (detailsReturnScreen) {
             "discover" -> showDiscoverScreen()
             "search" -> showSearchScreen()
@@ -2250,7 +2250,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showSettingsScreen() {
+    internal fun showSettingsScreen() {
         useContentScroll()
         currentScreen = "settings"
         root.removeAllViews()
@@ -2454,7 +2454,7 @@ class MainActivity : Activity() {
 
     // Subtitles section of Settings: each option is a pill showing its current value; OK
     // changes it (a list for choices, on/off for toggles).
-    private fun buildSubtitleSettings(section: LinearLayout) {
+    internal fun buildSubtitleSettings(section: LinearLayout) {
         val subs = subtitleSettings
         fun render(focusLabel: String? = null) {
             section.removeAllViews()
@@ -2541,7 +2541,7 @@ class MainActivity : Activity() {
         render()
     }
 
-    private fun buildTmdbSettings(section: LinearLayout) {
+    internal fun buildTmdbSettings(section: LinearLayout) {
         val ts = tmdbSettings
         fun render(focusLabel: String? = null) {
             section.removeAllViews()
@@ -2568,7 +2568,7 @@ class MainActivity : Activity() {
         render()
     }
 
-    private fun buildPlayerSettings(section: LinearLayout) {
+    internal fun buildPlayerSettings(section: LinearLayout) {
         val ps = playerSettings
         fun render(focusLabel: String? = null) {
             section.removeAllViews()
@@ -2627,7 +2627,7 @@ class MainActivity : Activity() {
         render()
     }
 
-    private fun buildTraktSettings(section: LinearLayout) {
+    internal fun buildTraktSettings(section: LinearLayout) {
         fun render(focus: Boolean = false) {
             section.removeAllViews()
             section.addView(Ui.text(this, Ui.Type.Headline, "Trakt"))
@@ -2661,7 +2661,7 @@ class MainActivity : Activity() {
     }
 
     // Trakt's sign-in for TVs: a code entered at trakt.tv/activate on a phone or computer.
-    private fun showTraktSignIn(onDone: () -> Unit) {
+    internal fun showTraktSignIn(onDone: () -> Unit) {
         lateinit var status: TextView
         lateinit var codeView: TextView
         val qrView = ImageView(this)
@@ -2739,7 +2739,7 @@ class MainActivity : Activity() {
     }
 
     // Email and password are sent to Stremio once; only the returned session key is saved.
-    private fun showStremioLogin(onDone: (String?) -> Unit) {
+    internal fun showStremioLogin(onDone: (String?) -> Unit) {
         val openedOn = currentScreen
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2806,7 +2806,7 @@ class MainActivity : Activity() {
 
     // Discover: browse any addon catalog as a poster grid, filtered by type, catalog and
     // genre. Modelled on Nuvio's Discover tab, using Orbit's poster cards.
-    private fun showDiscoverScreen() {
+    internal fun showDiscoverScreen() {
         currentScreen = "discover"
         detailsReturnScreen = "discover"
         actorPages.clear()
@@ -2913,7 +2913,7 @@ class MainActivity : Activity() {
 
     // Recycling grid: only the visible rows exist as views, so scrolling stays smooth however
     // many pages are loaded. Position 0 is the header; position i + 1 is discoverResults[i].
-    private inner class DiscoverAdapter :
+    internal inner class DiscoverAdapter :
         androidx.recyclerview.widget.RecyclerView.Adapter<DiscoverAdapter.Holder>() {
 
         inner class Holder(view: View, val poster: PosterCard?) :
@@ -2994,18 +2994,18 @@ class MainActivity : Activity() {
     }
 
     // Pill button used by Discover's pickers and the Settings actions.
-    private fun makePicker(onClick: () -> Unit) = Ui.pill(this, "") { onClick() }
+    internal fun makePicker(onClick: () -> Unit) = Ui.pill(this, "") { onClick() }
 
-    private lateinit var infoBackdrop: ImageView
-    private lateinit var infoOverline: TextView
-    private lateinit var infoTitle: TextView
-    private lateinit var infoChips: LinearLayout
-    private lateinit var infoGenres: TextView
-    private lateinit var infoOverview: TextView
-    private val infoHandler = Handler(Looper.getMainLooper())
+    internal lateinit var infoBackdrop: ImageView
+    internal lateinit var infoOverline: TextView
+    internal lateinit var infoTitle: TextView
+    internal lateinit var infoChips: LinearLayout
+    internal lateinit var infoGenres: TextView
+    internal lateinit var infoOverview: TextView
+    internal val infoHandler = Handler(Looper.getMainLooper())
 
     // Fixed panel on the right of Discover: backdrop, type, title, chips, genres, synopsis.
-    private fun makeDiscoverInfoPanel(): View {
+    internal fun makeDiscoverInfoPanel(): View {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(36, 150, Ui.gutter, 40)
@@ -3041,7 +3041,7 @@ class MainActivity : Activity() {
     }
 
     // Catalogs write runtime as "126 min", "1h55min" or "45"; show it like the rest of Orbit.
-    private fun formatCatalogRuntime(raw: String): String? {
+    internal fun formatCatalogRuntime(raw: String): String? {
         if (raw.isBlank()) return null
         val hours = Regex("(\\d+)\\s*h").find(raw)?.groupValues?.get(1)?.toInt() ?: 0
         val minutes = Regex("(\\d+)\\s*m").find(raw)?.groupValues?.get(1)?.toInt()
@@ -3049,7 +3049,7 @@ class MainActivity : Activity() {
         return Ui.formatRuntime(hours * 60 + (minutes ?: 0))
     }
 
-    private fun showDiscoverInfo(meta: StremioAddons.Meta, immediate: Boolean = false) {
+    internal fun showDiscoverInfo(meta: StremioAddons.Meta, immediate: Boolean = false) {
         infoHandler.removeCallbacksAndMessages(null)
         val apply = apply@{
             if (currentScreen != "discover" && currentScreen != "collection") return@apply
@@ -3104,21 +3104,21 @@ class MainActivity : Activity() {
         if (immediate) apply() else infoHandler.postDelayed({ apply() }, 300)
     }
 
-    private fun typeLabel(type: String) = when (type) {
+    internal fun typeLabel(type: String) = when (type) {
         "movie" -> "Movies"
         "series" -> "Series"
         else -> type.replaceFirstChar { it.uppercase() }
     }
 
-    private fun catalogLabel(catalog: StremioAddons.Catalog): String {
+    internal fun catalogLabel(catalog: StremioAddons.Catalog): String {
         val addonCount = discoverCatalogs.orEmpty().map { it.baseUrl }.distinct().size
         return if (addonCount > 1) "${catalog.name}  ·  ${catalog.addonName}" else catalog.name
     }
 
-    private fun selectedCatalog() =
+    internal fun selectedCatalog() =
         discoverCatalogs?.firstOrNull { it.key == discoverCatalogKey }
 
-    private fun updatePickerLabels() {
+    internal fun updatePickerLabels() {
         val catalog = selectedCatalog()
         typePicker.text = "${typeLabel(discoverType)}   ▾"
         catalogPicker.text = (catalog?.let { catalogLabel(it) }
@@ -3128,7 +3128,7 @@ class MainActivity : Activity() {
     }
 
     // A remote-friendly list dialog; picking an entry closes it.
-    private fun choose(title: String, options: List<String>, selected: Int, onPick: (Int) -> Unit) {
+    internal fun choose(title: String, options: List<String>, selected: Int, onPick: (Int) -> Unit) {
         if (options.isEmpty()) return
         android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(title)
@@ -3139,7 +3139,7 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun chooseDiscoverType() {
+    internal fun chooseDiscoverType() {
         val catalogs = discoverCatalogs.orEmpty()
         val types = catalogs.map { it.type }.distinct()
         choose("Type", types.map(::typeLabel), types.indexOf(discoverType)) { i ->
@@ -3153,7 +3153,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun chooseDiscoverCatalog() {
+    internal fun chooseDiscoverCatalog() {
         val options = discoverCatalogs.orEmpty().filter { it.type == discoverType }
         choose(
             "Catalog",
@@ -3162,7 +3162,7 @@ class MainActivity : Activity() {
         ) { i -> selectDiscoverCatalog(options[i]) }
     }
 
-    private fun chooseDiscoverGenre() {
+    internal fun chooseDiscoverGenre() {
         val catalog = selectedCatalog() ?: return
         val options = (if (catalog.genreRequired) emptyList() else listOf<String?>(null)) +
             catalog.genres
@@ -3178,7 +3178,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun selectDiscoverCatalog(catalog: StremioAddons.Catalog) {
+    internal fun selectDiscoverCatalog(catalog: StremioAddons.Catalog) {
         discoverCatalogKey = catalog.key
         discoverType = catalog.type
         // Some catalogs (e.g. "New", by year) can't be listed without a genre.
@@ -3187,7 +3187,7 @@ class MainActivity : Activity() {
         fetchDiscoverPage(reset = true)
     }
 
-    private fun loadDiscoverCatalogs() {
+    internal fun loadDiscoverCatalogs() {
         discoverStatus.text = "Loading catalogs..."
         val request = discoverRequest
         thread {
@@ -3214,7 +3214,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun fetchDiscoverPage(reset: Boolean) {
+    internal fun fetchDiscoverPage(reset: Boolean) {
         val catalog = selectedCatalog() ?: return
         if (reset) {
             discoverRequest++
@@ -3268,14 +3268,14 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun appendDiscoverCards(start: Int) {
+    internal fun appendDiscoverCards(start: Int) {
         val adapter = discoverList.adapter ?: return
         // The previous last poster is no longer the end of its row.
         if (start > 0) adapter.notifyItemChanged(start)
         adapter.notifyItemRangeInserted(start + 1, discoverResults.size - start)
     }
 
-    private fun openDiscoverItem(index: Int) {
+    internal fun openDiscoverItem(index: Int) {
         val meta = discoverResults.getOrNull(index) ?: return
         discoverFocusIndex = index
         openMeta(meta, discoverStatus, "discover")
@@ -3283,7 +3283,7 @@ class MainActivity : Activity() {
 
     // Opens an addon catalog item: films straight to their page; series need TMDB's id,
     // which some addons give directly and the rest are looked up from the IMDb id.
-    private fun openMeta(meta: StremioAddons.Meta, status: TextView, fromScreen: String) {
+    internal fun openMeta(meta: StremioAddons.Meta, status: TextView, fromScreen: String) {
         if (meta.type != "series") {
             showFilmDetails(
                 meta.name, meta.poster.orEmpty(), imdbId = meta.id.takeIf { it.startsWith("tt") }
@@ -3313,16 +3313,16 @@ class MainActivity : Activity() {
 
     // Search: one query sent to every addon catalog that supports search; results come
     // back as one row per catalog, in the account's addon order (as Stremio shows them).
-    private var searchQuery = ""
-    private var searchRequest = 0
-    private val searchRows = mutableListOf<Pair<StremioAddons.Catalog, List<StremioAddons.Meta>>>()
-    private var searchPending = 0
-    private var searchFocus: Pair<String, Int>? = null
-    private val searchHandler = Handler(Looper.getMainLooper())
-    private var searchCatalogsCache: List<StremioAddons.Catalog>? = null
-    private var moveToSearchResults = false
+    internal var searchQuery = ""
+    internal var searchRequest = 0
+    internal val searchRows = mutableListOf<Pair<StremioAddons.Catalog, List<StremioAddons.Meta>>>()
+    internal var searchPending = 0
+    internal var searchFocus: Pair<String, Int>? = null
+    internal val searchHandler = Handler(Looper.getMainLooper())
+    internal var searchCatalogsCache: List<StremioAddons.Catalog>? = null
+    internal var moveToSearchResults = false
 
-    private fun showSearchScreen() {
+    internal fun showSearchScreen() {
         useContentScroll()
         currentScreen = "search"
         detailsReturnScreen = "search"
@@ -3492,7 +3492,7 @@ class MainActivity : Activity() {
     }
 
     // Finds the film's IMDb id through TMDB when it wasn't opened from an addon catalog.
-    private fun resolveFilmImdbId(title: String): String? {
+    internal fun resolveFilmImdbId(title: String): String? {
         val key = BuildConfig.TMDB_API_KEY
         val metadata = TmdbTest.fetchMetadata(title, key) ?: return null
         if (metadata.mediaType != "movie") return null
@@ -3501,7 +3501,7 @@ class MainActivity : Activity() {
 
     // Streams screen: asks every stream addon at once and lists their links as they arrive,
     // grouped by addon in the order of the Stremio account (as Stremio does).
-    private fun showStreams(
+    internal fun showStreams(
         type: String,
         label: String,
         target: WatchTarget? = null,
@@ -3580,7 +3580,7 @@ class MainActivity : Activity() {
 
     // Builds the screen once; addons' results are slotted in as they arrive (insertStreamGroup)
     // rather than rebuilding the whole list each time, which briefly froze the remote.
-    private fun showStreamsScreen() {
+    internal fun showStreamsScreen() {
         useContentScroll()
         currentScreen = "streams"
         root.removeAllViews()
@@ -3640,7 +3640,7 @@ class MainActivity : Activity() {
         if (currentFocus == null || !isDescendantOf(currentFocus!!, root)) backLink.requestFocus()
     }
 
-    private fun updateStreamsStatus() {
+    internal fun updateStreamsStatus() {
         val status = streamsStatus ?: return
         val found = streamGroups.sumOf { it.second.size }
         status.text = listOfNotNull(
@@ -3662,10 +3662,10 @@ class MainActivity : Activity() {
         status.setTextColor(if (playbackError != null) Color.rgb(255, 170, 150) else Color.LTGRAY)
     }
 
-    private val streamRowsFirst = 4
-    private val streamRowBatch = 20
+    internal val streamRowsFirst = 4
+    internal val streamRowBatch = 20
 
-    private fun insertStreamGroup(addonName: String, streams: List<StremioStreams.Stream>) {
+    internal fun insertStreamGroup(addonName: String, streams: List<StremioStreams.Stream>) {
         val list = streamsList ?: return
         val group = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -3758,7 +3758,7 @@ class MainActivity : Activity() {
     }
 
     // addonName null is the All tab.
-    private fun makeStreamTab(addonName: String?, count: Int = 0) =
+    internal fun makeStreamTab(addonName: String?, count: Int = 0) =
         Ui.pill(this, if (addonName == null) "All" else "$addonName  ·  $count") {
             selectStreamTab(addonName)
         }.apply {
@@ -3769,9 +3769,9 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(-2, -2).apply { rightMargin = 12 }
         }
 
-    private fun paintStreamTab(tab: TextView) = Ui.paintPill(tab, tab.tag == streamTab)
+    internal fun paintStreamTab(tab: TextView) = Ui.paintPill(tab, tab.tag == streamTab)
 
-    private fun selectStreamTab(addonName: String?) {
+    internal fun selectStreamTab(addonName: String?) {
         streamTab = addonName
         val list = streamsList ?: return
         for (i in 0 until list.childCount) {
@@ -3785,7 +3785,7 @@ class MainActivity : Activity() {
 
     // Repaints the tabs and links them with the list: Down from any tab goes to the first
     // visible stream, Up from the first visible stream goes to the selected tab.
-    private fun updateStreamTabs() {
+    internal fun updateStreamTabs() {
         val tabs = streamTabs ?: return
         val list = streamsList ?: return
         var firstRow: View? = null
@@ -3814,7 +3814,7 @@ class MainActivity : Activity() {
 
     // Stream card: quality on the left; release name, source and details in the middle;
     // badges (Dolby Vision, HDR, Atmos…) under them; size on the right.
-    private fun makeStreamRow(stream: StremioStreams.Stream, onFocused: () -> Unit): LinearLayout {
+    internal fun makeStreamRow(stream: StremioStreams.Stream, onFocused: () -> Unit): LinearLayout {
         val all = "${stream.name}\n${stream.description}"
         val badges = Ui.streamBadges(all)
         val quality = badges.firstOrNull { it.first in setOf("4K", "1080p", "720p", "SD") }
@@ -3882,7 +3882,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun playStream(stream: StremioStreams.Stream) {
+    internal fun playStream(stream: StremioStreams.Stream) {
         playbackError = null
         playingStream = stream
         val url = stream.url
@@ -3935,10 +3935,10 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun installedExternalPlayers(): List<PlayerSettings.Companion.ExternalPlayer> =
+    internal fun installedExternalPlayers(): List<PlayerSettings.Companion.ExternalPlayer> =
         PlayerSettings.externalPlayers.filter { player -> player.packages.any { isInstalled(it) } }
 
-    private fun isInstalled(pkg: String) = try {
+    internal fun isInstalled(pkg: String) = try {
         packageManager.getPackageInfo(pkg, 0)
         true
     } catch (_: Exception) {
@@ -3947,7 +3947,7 @@ class MainActivity : Activity() {
 
     // Runs inOrbit, or external with the player chosen in Settings (asking first with
     // "Ask each time"). Trailers always play in Orbit.
-    private fun playWithChosenPlayer(
+    internal fun playWithChosenPlayer(
         trailer: Boolean,
         external: (PlayerSettings.Companion.ExternalPlayer) -> Unit,
         inOrbit: () -> Unit
@@ -3967,7 +3967,7 @@ class MainActivity : Activity() {
     // Plays in another app and asks it to report back where the viewer stopped (MX Player's
     // and VLC's result extras); see onActivityResult. What's playing is saved in prefs, since
     // Orbit may be closed by Android while the other player is open.
-    private fun startExternalPlayer(
+    internal fun startExternalPlayer(
         player: PlayerSettings.Companion.ExternalPlayer,
         url: String,
         stream: StremioStreams.Stream,
@@ -4051,9 +4051,9 @@ class MainActivity : Activity() {
         homeDirty = true
     }
 
-    private val externalPlayerRequest = 4711
+    internal val externalPlayerRequest = 4711
 
-    private fun addonSubtitlesFrom(
+    internal fun addonSubtitlesFrom(
         future: java.util.concurrent.Future<List<StremioSubtitles.Subtitle>>?
     ): List<StremioSubtitles.Subtitle> = try {
         future?.takeIf { it.isDone }?.get().orEmpty()
@@ -4062,41 +4062,12 @@ class MainActivity : Activity() {
     }
 
     // What Trakt was last told about the playing title ("start", "pause" or "stop").
-    private var scrobbleItem: Trakt.Item? = null
-    private var scrobbleState: String? = null
-
-    private fun scrobble(action: String) {
-        val item = scrobbleItem ?: return
-        val p = player ?: return
-        if (action == scrobbleState || scrobbleState == "stop") return
-        val duration = p.duration.takeIf { it > 0 } ?: return
-        scrobbleState = action
-        trakt.scrobble(action, item, if (action == "stop" && p.playbackState == androidx.media3.common.Player.STATE_ENDED) 100f
-            else p.currentPosition * 100f / duration)
-    }
-
-    // Saves where the viewer is in the current title (called every 10 s and on exit).
-    // pushNow: send to Stremio straight away (leaving the player) rather than once a minute.
-    private fun saveProgress(finished: Boolean = false, pushNow: Boolean = false) {
-        val p = player ?: return
-        val id = playingId ?: return
-        val target = playingTarget ?: return
-        val duration = p.duration.takeIf { it > 0 } ?: return
-        val position = if (finished) duration else p.currentPosition
-        if (position <= 0) return
-        homeDirty = true // Continue rows change
-        val entry = WatchProgress.Entry(
-            id, target.type, target.title, target.episodeLabel, target.poster,
-            target.tvId, target.season, target.episode,
-            position, duration, System.currentTimeMillis()
-        )
-        progress.save(entry)
-        library.pushProgress(entry, force = finished || pushNow)
-    }
+    internal var scrobbleItem: Trakt.Item? = null
+    internal var scrobbleState: String? = null
 
     // Brings My List and progress up to date from the Stremio library, then Trakt. Home is
     // rebuilt if anything on it changed (straight away when it's the screen showing).
-    private fun syncLibrary() {
+    internal fun syncLibrary() {
         if (!library.signedIn && !trakt.signedIn) return
         thread {
             val fromStremio = try {
@@ -4118,7 +4089,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private val progressTicker = object : Runnable {
+    internal val progressTicker = object : Runnable {
         override fun run() {
             saveProgress()
             progressHandler.postDelayed(this, 10_000)
@@ -4126,7 +4097,7 @@ class MainActivity : Activity() {
     }
 
     // Hands the link to another app (Kodi, a YouTube app for trailers, …).
-    private fun openStreamElsewhere(stream: StremioStreams.Stream) {
+    internal fun openStreamElsewhere(stream: StremioStreams.Stream) {
         val intent = when {
             stream.url != null -> android.content.Intent(android.content.Intent.ACTION_VIEW)
                 .setDataAndType(android.net.Uri.parse(stream.url), "video/*")
@@ -4144,7 +4115,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun leaveStreams() {
+    internal fun leaveStreams() {
         streamsRequest++
         streamsListener?.let { l -> streamsSession?.stop(l) }
         streamsSession = null
@@ -4158,7 +4129,7 @@ class MainActivity : Activity() {
 
     // Backdrop header shared by film and show pages: back link, then title, chips, tagline,
     // overview and buttons laid over a full-width backdrop that fades into the page.
-    private class DetailHero(
+    internal class DetailHero(
         val back: TextView,
         val backdrop: ImageView,
         val overline: TextView,
@@ -4171,7 +4142,7 @@ class MainActivity : Activity() {
         val logo: ImageView
     )
 
-    private fun addDetailHero(kind: String, title: String, height: Int = 800): DetailHero {
+    internal fun addDetailHero(kind: String, title: String, height: Int = 800): DetailHero {
         val (frame, backdrop) = Ui.backdrop(this, height)
         root.addView(frame, LinearLayout.LayoutParams(-1, height).apply {
             leftMargin = -Ui.gutter
@@ -4234,7 +4205,7 @@ class MainActivity : Activity() {
 
     // Fills a detail header from TMDB details once they arrive.
     // The richer TMDB details: logo, status, studios and director on top of the basics.
-    private fun fillDetailHero(hero: DetailHero, details: TmdbMeta.Details, extraChips: List<String> = emptyList()) {
+    internal fun fillDetailHero(hero: DetailHero, details: TmdbMeta.Details, extraChips: List<String> = emptyList()) {
         fillDetailHero(hero, details.metadata, listOfNotNull(details.status.ifBlank { null }) + extraChips)
         val credits = listOfNotNull(
             details.director?.let { if (details.mediaType == "tv") "Created by $it" else "Directed by $it" },
@@ -4248,7 +4219,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showLogo(view: ImageView, path: String, onShown: () -> Unit) {
+    internal fun showLogo(view: ImageView, path: String, onShown: () -> Unit) {
         view.setImageDrawable(null)
         loadPosterImage(view, path, "w500", targetWidth = 760, keepAlpha = true)
         view.post(object : Runnable {
@@ -4263,7 +4234,7 @@ class MainActivity : Activity() {
     }
 
     // Finds TMDB's details for a title: by TMDB id, else IMDb id, else (last resort) name.
-    private fun tmdbDetailsFor(mediaType: String, title: String, tmdbId: Int?, imdbId: String?): TmdbMeta.Details? {
+    internal fun tmdbDetailsFor(mediaType: String, title: String, tmdbId: Int?, imdbId: String?): TmdbMeta.Details? {
         val key = BuildConfig.TMDB_API_KEY
         val ref = tmdbId?.let { mediaType to it }
             ?: imdbId?.let { TmdbMeta.resolve(it, mediaType, key) }
@@ -4273,7 +4244,7 @@ class MainActivity : Activity() {
     }
 
     // "Trailer" beside Play: the TMDB trailer, opened in the TV's YouTube app.
-    private fun addTrailerButton(hero: DetailHero, youtubeKey: String?) {
+    internal fun addTrailerButton(hero: DetailHero, youtubeKey: String?) {
         youtubeKey ?: return
         lateinit var button: TextView
         button = Ui.button(this, "▶  Trailer") { playTrailer(youtubeKey, button) }
@@ -4283,7 +4254,7 @@ class MainActivity : Activity() {
 
     // Left/right move along the page's buttons and stop at the ends, rather than jumping
     // down to whatever lies below (the seasons, the cast).
-    private fun linkButtonRow(row: LinearLayout) {
+    internal fun linkButtonRow(row: LinearLayout) {
         val buttons = (0 until row.childCount).map { row.getChildAt(it) }
         buttons.forEach { if (it.id == View.NO_ID) it.id = View.generateViewId() }
         buttons.forEachIndexed { i, b ->
@@ -4292,7 +4263,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private val youtubeApps = listOf(
+    internal val youtubeApps = listOf(
         "io.gh.reisxd.tizentube.cobalt",            // TizenTube
         "com.teamsmart.videomanager.tv",            // SmartTube
         "com.liskovsoft.smarttubetv.beta",
@@ -4302,7 +4273,7 @@ class MainActivity : Activity() {
     )
 
     // Plays the trailer in Orbit's player; Back returns to the page.
-    private fun playTrailer(youtubeKey: String, button: TextView) {
+    internal fun playTrailer(youtubeKey: String, button: TextView) {
         val screen = currentScreen
         val title = lastFilmTitle
         button.text = "Loading trailer..."
@@ -4324,7 +4295,7 @@ class MainActivity : Activity() {
     }
 
     // Fallback when YouTube won't give Orbit the video: hand it to a YouTube app.
-    private fun openTrailer(youtubeKey: String) {
+    internal fun openTrailer(youtubeKey: String) {
         val intent = android.content.Intent(
             android.content.Intent.ACTION_VIEW,
             android.net.Uri.parse("https://www.youtube.com/watch?v=$youtubeKey")
@@ -4341,7 +4312,7 @@ class MainActivity : Activity() {
     }
 
     // "More like this": TMDB recommendations, opening their own pages.
-    private fun addMoreLikeThis(items: List<TmdbTest.CatalogueItem>) {
+    internal fun addMoreLikeThis(items: List<TmdbTest.CatalogueItem>) {
         if (items.isEmpty() || !tmdbSettings.moreLikeThis) return
         root.addView(Ui.sectionTitle(this, "More like this"))
         val (scroll, row) = makePosterRow()
@@ -4355,7 +4326,7 @@ class MainActivity : Activity() {
         addPosterRow(scroll)
     }
 
-    private fun fillDetailHero(hero: DetailHero, live: TmdbTest.FilmMetadata, extraChips: List<String> = emptyList()) {
+    internal fun fillDetailHero(hero: DetailHero, live: TmdbTest.FilmMetadata, extraChips: List<String> = emptyList()) {
         hero.chips.removeAllViews()
         (listOfNotNull(
             live.releaseYear.takeIf { it.isNotBlank() },
@@ -4379,7 +4350,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showFilmDetails(
+    internal fun showFilmDetails(
         title: String,
         posterFile: String,
         focusCastIndex: Int = -1,
@@ -4488,11 +4459,9 @@ class MainActivity : Activity() {
         if (focusCastIndex < 0) playButton.requestFocus() else hero.back.requestFocus()
     }
 
+    internal var lastTvId: Int = -1
 
-
-    private var lastTvId: Int = -1
-
-    private fun showTvDetails(tvId: Int, title: String, posterPath: String, focusCastIndex: Int = -1) {
+    internal fun showTvDetails(tvId: Int, title: String, posterPath: String, focusCastIndex: Int = -1) {
         useContentScroll()
         if (!showImdbIds.containsKey(tvId)) {
             thread {
@@ -4744,7 +4713,7 @@ class MainActivity : Activity() {
     }
 
     // Episode card: thumbnail on the left; number, runtime, title and synopsis beside it.
-    private fun makeEpisodeCard(
+    internal fun makeEpisodeCard(
         episode: TmdbTest.TvEpisode,
         watch: WatchProgress.Entry?,
         onClick: () -> Unit
@@ -4819,7 +4788,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun addCastSection(
+    internal fun addCastSection(
         title: String,
         focusCastIndex: Int = -1,
         screen: String = "details",
@@ -4931,7 +4900,7 @@ class MainActivity : Activity() {
 
     // Actor pages opened so far, newest last, so Back retraces show → actor → film → actor.
     // Each remembers the page it was opened from and where Back from that page led.
-    private data class ActorPage(
+    internal data class ActorPage(
         val name: String,
         val personId: Int,
         val profilePath: String?,
@@ -4946,9 +4915,9 @@ class MainActivity : Activity() {
         var focusRow: Int = -1,
         var focusIndex: Int = -1
     )
-    private val actorPages = ArrayDeque<ActorPage>()
+    internal val actorPages = ArrayDeque<ActorPage>()
 
-    private fun openActor(member: TmdbTest.CastMember, index: Int, fromShow: Boolean) {
+    internal fun openActor(member: TmdbTest.CastMember, index: Int, fromShow: Boolean) {
         val page = ActorPage(
             member.name, member.id, member.profilePath, lastFilmTitle, lastPosterFile, fromShow, lastTvId,
             lastFilmTmdbId, lastFilmImdbId, index, detailsReturnScreen
@@ -4957,14 +4926,14 @@ class MainActivity : Activity() {
         showActorProfile(page)
     }
 
-    private fun leaveActor() {
+    internal fun leaveActor() {
         val page = actorPages.removeLastOrNull() ?: return showHomeScreen()
         detailsReturnScreen = page.previousReturn
         if (page.fromShow) showTvDetails(page.fromTvId, page.fromTitle, page.fromPoster, page.castIndex)
         else showFilmDetails(page.fromTitle, page.fromPoster, page.castIndex, page.fromImdbId, page.fromTmdbId)
     }
 
-    private fun showActorProfile(page: ActorPage) {
+    internal fun showActorProfile(page: ActorPage) {
         useContentScroll()
         currentScreen = "actor"
         root.removeAllViews()
@@ -5063,7 +5032,7 @@ class MainActivity : Activity() {
     // ---- Profiles ----
 
     // Round avatar with the profile's initial; a white ring when focused.
-    private fun makeAvatar(p: Profiles.Profile, size: Int): TextView = TextView(this).apply {
+    internal fun makeAvatar(p: Profiles.Profile, size: Int): TextView = TextView(this).apply {
         text = p.name.take(1).uppercase()
         gravity = Gravity.CENTER
         textSize = size / 5.2f
@@ -5083,7 +5052,7 @@ class MainActivity : Activity() {
 
     // "Who's watching?": shown at startup when there's more than one profile, and from the
     // avatar in the header.
-    private fun showProfilePicker() {
+    internal fun showProfilePicker() {
         useContentScroll()
         currentScreen = "profiles"
         root.removeAllViews()
@@ -5163,7 +5132,7 @@ class MainActivity : Activity() {
     }
 
     // Opens Orbit again as another profile: its own addons, settings and Continue watching.
-    private fun switchProfile(id: String) {
+    internal fun switchProfile(id: String) {
         Profiles.setActive(this, id)
         Profiles.chosenThisLaunch = true
         StremioAddons.addonUrls = emptyList()
@@ -5172,7 +5141,7 @@ class MainActivity : Activity() {
 
     // A one-line text dialog; onDone gets the text when it isn't blank.
     // optional: OK with nothing typed still goes on (with "").
-    private fun promptText(title: String, hint: String, initial: String, numeric: Boolean = false, optional: Boolean = false, onDone: (String) -> Unit) {
+    internal fun promptText(title: String, hint: String, initial: String, numeric: Boolean = false, optional: Boolean = false, onDone: (String) -> Unit) {
         val field = android.widget.EditText(this).apply {
             this.hint = hint
             setText(initial)
@@ -5205,7 +5174,7 @@ class MainActivity : Activity() {
     }
 
     // Profiles section of Settings. Returns its first button, which Settings focuses first.
-    private fun buildProfilesSettings(section: LinearLayout): View {
+    internal fun buildProfilesSettings(section: LinearLayout): View {
         section.addView(Ui.text(this, Ui.Type.Headline, "Profiles"))
         val all = Profiles.list(this)
         section.addView(Ui.text(this, Ui.Type.Body,
@@ -5254,15 +5223,15 @@ class MainActivity : Activity() {
         return switch
     }
 
-    private var transferServer: ProfileTransfer.Server? = null
+    internal var transferServer: ProfileTransfer.Server? = null
 
-    private fun leaveTransfer() {
+    internal fun leaveTransfer() {
         transferServer?.stop()
         transferServer = null
         if (onboarding) showWelcome() else showSettingsScreen()
     }
 
-    private fun transferPage(title: String): LinearLayout {
+    internal fun transferPage(title: String): LinearLayout {
         useContentScroll()
         currentScreen = "transfer"
         root.removeAllViews()
@@ -5285,7 +5254,7 @@ class MainActivity : Activity() {
     }
 
     // Sending: this device waits with a PIN until the other one downloads the profile.
-    private fun showSendProfile() {
+    internal fun showSendProfile() {
         val panel = transferPage("Send ${profile.name}")
         val payload = Profiles.export(this, profile.id).toString()
         lateinit var server: ProfileTransfer.Server
@@ -5323,7 +5292,7 @@ class MainActivity : Activity() {
     }
 
     // Receiving: find devices that are sending, then download with their PIN.
-    private fun showReceiveProfile() {
+    internal fun showReceiveProfile() {
         val panel = transferPage("Receive a profile")
         val status = Ui.text(this, Ui.Type.Body, "", Ui.textSecondary).apply { setPadding(0, 0, 0, 24) }
         panel.addView(status)
@@ -5407,164 +5376,20 @@ class MainActivity : Activity() {
 
     // ---- Loading overlay: covers the player until the first frame is on screen ----
 
-    private lateinit var loadingOverlay: FrameLayout
-    private lateinit var loadingBackdrop: ImageView
-    private lateinit var loadingLogo: ImageView
-    private lateinit var loadingTitle: TextView
-    private lateinit var loadingSubtitle: TextView
-    private lateinit var loadingSource: TextView
-    private lateinit var loadingStatus: TextView
-    private var loadingRequest = 0
+    internal lateinit var loadingOverlay: FrameLayout
+    internal lateinit var loadingBackdrop: ImageView
+    internal lateinit var loadingLogo: ImageView
+    internal lateinit var loadingTitle: TextView
+    internal lateinit var loadingSubtitle: TextView
+    internal lateinit var loadingSource: TextView
+    internal lateinit var loadingStatus: TextView
+    internal var loadingRequest = 0
 
-    private fun buildLoadingOverlay(): FrameLayout {
-        loadingBackdrop = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            alpha = 0f
-        }
-        // Darkens the backdrop, most of all where the text sits.
-        val scrim = View(this).apply {
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,
-                intArrayOf(Color.argb(250, 9, 11, 16), Color.argb(200, 9, 11, 16), Color.argb(150, 9, 11, 16))
-            )
-        }
-        loadingLogo = ImageView(this).apply {
-            adjustViewBounds = true
-            maxWidth = 760
-            maxHeight = 220
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            visibility = View.GONE
-        }
-        loadingTitle = Ui.text(this, Ui.Type.Display, "", maxLines = 2).apply { gravity = Gravity.CENTER }
-        loadingSubtitle = Ui.text(this, Ui.Type.BodyStrong, "", Ui.textSecondary, maxLines = 1).apply {
-            gravity = Gravity.CENTER
-            textSize = 20f
-            setPadding(0, 22, 0, 0)
-        }
-        val spinner = android.widget.ProgressBar(this).apply {
-            isIndeterminate = true
-            indeterminateTintList = android.content.res.ColorStateList.valueOf(Ui.accent)
-        }
-        loadingStatus = Ui.text(this, Ui.Type.BodyStrong, "", Ui.textPrimary, maxLines = 1).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, 22, 0, 0)
-        }
-        loadingSource = Ui.text(this, Ui.Type.Label, "", Ui.textMuted, maxLines = 1).apply {
-            gravity = Gravity.CENTER
-            setPadding(120, 10, 120, 0)
-            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-        }
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            addView(loadingLogo, LinearLayout.LayoutParams(-2, -2))
-            addView(loadingTitle, LinearLayout.LayoutParams(-1, -2))
-            addView(loadingSubtitle, LinearLayout.LayoutParams(-1, -2))
-            addView(spinner, LinearLayout.LayoutParams(84, 84).apply { topMargin = 70 })
-            addView(loadingStatus, LinearLayout.LayoutParams(-1, -2))
-            addView(loadingSource, LinearLayout.LayoutParams(-1, -2))
-        }
-        val hint = Ui.text(this, Ui.Type.Caption, "Press Back to cancel", Ui.textMuted).apply { gravity = Gravity.CENTER }
-        loadingOverlay = FrameLayout(this).apply {
-            setBackgroundColor(Ui.background)
-            visibility = View.GONE
-            isClickable = true // nothing behind it reacts while it's up
-            addView(loadingBackdrop, FrameLayout.LayoutParams(-1, -1))
-            addView(scrim, FrameLayout.LayoutParams(-1, -1))
-            addView(column, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER).apply { leftMargin = Ui.gutter; rightMargin = Ui.gutter })
-            addView(hint, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { bottomMargin = 56 })
-        }
-        return loadingOverlay
-    }
+    internal fun detailsTypeIsTv() = playerReturnScreen == "tv_details"
 
-    private fun showLoadingOverlay(watchId: String?, target: WatchTarget?) {
-        val request = ++loadingRequest
-        val trailer = target == null
-        val title = target?.title ?: lastFilmTitle
-        loadingTitle.text = title
-        loadingTitle.visibility = View.VISIBLE
-        loadingLogo.visibility = View.GONE
-        loadingLogo.setImageDrawable(null)
-        loadingBackdrop.animate().cancel()
-        loadingBackdrop.alpha = 0f
-        loadingBackdrop.setImageDrawable(null)
-        loadingSubtitle.text = when {
-            trailer -> "Trailer"
-            target!!.episodeLabel.isNotBlank() -> target.episodeLabel
-            else -> ""
-        }
-        loadingSubtitle.visibility = if (loadingSubtitle.text.isEmpty()) View.GONE else View.VISIBLE
-        loadingStatus.text = if (trailer) "Loading trailer..." else "Loading stream..."
-        // Which stream: its addon and the quality/size details addons put in the name.
-        loadingSource.text = playingStream?.let { st ->
-            val badges = Ui.streamBadges("${st.name} ${st.description}").joinToString("  ·  ") { it.first }
-            listOf(st.addonName, badges).filter { it.isNotBlank() }.joinToString("  ·  ")
-        }.orEmpty()
-        loadingSource.visibility = if (loadingSource.text.isEmpty()) View.GONE else View.VISIBLE
-        playerView.useController = false
-        loadingOverlay.animate().cancel()
-        loadingOverlay.alpha = 1f
-        loadingOverlay.visibility = View.VISIBLE
-        // Reassurance when a big file takes a while to start.
-        loadingOverlay.postDelayed({
-            if (request == loadingRequest && loadingOverlay.visibility == View.VISIBLE)
-                loadingStatus.text = "Still loading — large files can take a moment..."
-        }, 9000)
+    internal var onboarding = false
 
-        // Backdrop and title logo from TMDB, found by the video's IMDb id (or the show/film page).
-        if (!tmdbSettings.enabled) return
-        val key = BuildConfig.TMDB_API_KEY
-        val tvId = target?.tvId?.takeIf { it > 0 } ?: if (trailer && detailsTypeIsTv()) lastTvId else null
-        val tmdbId = if (trailer && !detailsTypeIsTv()) lastFilmTmdbId else null
-        thread {
-            val details = try {
-                when {
-                    tvId != null -> TmdbMeta.details("tv", tvId, key)
-                    tmdbId != null -> TmdbMeta.details("movie", tmdbId, key)
-                    watchId != null && watchId.startsWith("tt") ->
-                        TmdbMeta.resolve(watchId.substringBefore(':'), target?.type ?: "movie", key)
-                            ?.let { (t, id) -> TmdbMeta.details(t, id, key) }
-                    else -> tmdbDetailsFor("movie", title, null, lastFilmImdbId)
-                }
-            } catch (_: Exception) {
-                null
-            }
-            Handler(Looper.getMainLooper()).post {
-                if (request != loadingRequest || loadingOverlay.visibility != View.VISIBLE || details == null) return@post
-                details.metadata.backdropPath?.let { path ->
-                    loadPosterImage(loadingBackdrop, path, "w1280", targetWidth = 1280)
-                    loadingBackdrop.animate().alpha(1f).setDuration(400).start()
-                }
-                if (tmdbSettings.logos) details.logoPath?.let { path ->
-                    showLogo(loadingLogo, path) {
-                        if (request == loadingRequest) loadingTitle.visibility = View.GONE
-                    }
-                }
-            }
-        }
-    }
-
-    private fun detailsTypeIsTv() = playerReturnScreen == "tv_details"
-
-    private fun hideLoadingOverlay(animate: Boolean = true) {
-        loadingRequest++
-        playerView.useController = true
-        if (loadingOverlay.visibility != View.VISIBLE) return
-        if (!animate) {
-            loadingOverlay.visibility = View.GONE
-            return
-        }
-        loadingOverlay.animate().alpha(0f).setDuration(350).withEndAction {
-            loadingOverlay.visibility = View.GONE
-            loadingOverlay.alpha = 1f
-        }.start()
-    }
-
-    // ---- First run: welcome and addon setup ----
-
-    private var onboarding = false
-
-    private fun onboardingPage(): LinearLayout {
+    internal fun onboardingPage(): LinearLayout {
         useContentScroll()
         root.removeAllViews()
         root.gravity = Gravity.CENTER
@@ -5575,7 +5400,7 @@ class MainActivity : Activity() {
         }.also { root.addView(it, LinearLayout.LayoutParams(1100, -2).apply { gravity = Gravity.CENTER_HORIZONTAL }) }
     }
 
-    private fun showWelcome() {
+    internal fun showWelcome() {
         onboarding = true
         currentScreen = "welcome"
         val page = onboardingPage()
@@ -5612,7 +5437,7 @@ class MainActivity : Activity() {
     }
 
     // Step two: where films, shows and streams come from.
-    private fun showAddonSetup() {
+    internal fun showAddonSetup() {
         currentScreen = "setup"
         val page = onboardingPage()
         page.addView(Ui.text(this, Ui.Type.Overline, "STEP 2 OF 2", Ui.accent).apply { gravity = Gravity.CENTER },
@@ -5703,192 +5528,17 @@ class MainActivity : Activity() {
     }
 
     // Catalogs and subtitles from Stremio's own official addons.
-    private val starterAddons = listOf(
+    internal val starterAddons = listOf(
         "https://v3-cinemeta.strem.io/manifest.json",
         "https://opensubtitles-v3.strem.io/manifest.json"
     )
 
-    private fun playTestVideo() = startPlayback(testUrl, emptyMap())
+    internal fun playTestVideo() = startPlayback(testUrl, emptyMap())
 
-    private fun startPlayback(
-        url: String,
-        headers: Map<String, String>,
-        watchId: String? = null,
-        target: WatchTarget? = null,
-        startAtMs: Long = 0L,
-        addonSubtitles: List<StremioSubtitles.Subtitle> = emptyList()
-    ) {
-        // Moving straight on to another video (next episode): finish the last one on Trakt.
-        scrobble("stop")
-        playingId = watchId
-        playingTarget = target
-        scrobbleItem = if (target != null && watchId != null) Trakt.Item.from(watchId, target.type) else null
-        scrobbleState = null
-        progressHandler.removeCallbacks(progressTicker)
-        progressHandler.postDelayed(progressTicker, 10_000)
-        // Moving on to the next episode keeps where Back from the player leads.
-        if (currentScreen != "player") playerReturnScreen = currentScreen
-        currentScreen = "player"
-        // Full screen: the player replaces the page instead of sitting inside its margins.
-        (playerFrame.parent as? ViewGroup)?.removeView(playerFrame)
-        stopDiscoverFocusWatcher()
-        setContentView(playerFrame)
-        playerView.requestFocus()
-        showLoadingOverlay(watchId, target)
-        startPlayerExtras(watchId, target)
+    internal var reconnects = 0
+    internal var lastReconnectAt = 0L
 
-        player?.release()
-        // NuvioTV's engine and its defaults (see NuvioEngine); addon request headers go with
-        // every request.
-        val built = NuvioEngine.build(
-            this, window.decorView.display, url, headers,
-            if (".m3u8" in url) androidx.media3.common.MimeTypes.APPLICATION_M3U8 else null,
-            playerSettings.tunneling
-        ) { audioDelayMs * 1000L }
-        reconnects = 0
-        lastReconnectAt = 0L
-        val subs = subtitleSettings
-        subs.applyStyle(playerView.subtitleView)
-        // The control bar's CC button opens Orbit's subtitle menu rather than Media3's own.
-        playerView.setShowSubtitleButton(true)
-        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_subtitle)?.setOnClickListener {
-            showSubtitleMenu()
-        }
-        var subtitleChosen = false
-        player = built.player
-            .also {
-                // Orbit picks the subtitle track itself (see SubtitleSettings.choose), so the
-                // player starts with subtitles off; the preferred audio language goes first.
-                // With Match frame rate on, the sound starts only after the TV has switched
-                // mode (see holdAudioForFrameRate).
-                val holdAudio = playerSettings.matchFrameRate
-                it.trackSelectionParameters = it.trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, holdAudio)
-                    .apply { if (subs.audioLanguage.isNotBlank()) setPreferredAudioLanguage(subs.audioLanguage) }
-                    .build()
-                if (holdAudio) holdAudioForFrameRate(it, startAtMs)
-                playerView.player = it
-                it.addListener(object : androidx.media3.common.Player.Listener {
-                    override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                        // Once per video, after the audio track is known; later changes made
-                        // in the player's own subtitle menu are left alone.
-                        if (subtitleChosen || tracks.groups.none { g -> g.type == C.TRACK_TYPE_AUDIO && g.isSelected }) return
-                        subtitleChosen = true
-                        val choice = subs.choose(tracks)
-                        if (choice == null) {
-                            // Nothing suitable in the file: an addon subtitle, if any fits.
-                            subs.chooseAddon(tracks, playingAddonSubs)?.let { showAddonSubtitle(it) }
-                            return
-                        }
-                        it.trackSelectionParameters = it.trackSelectionParameters.buildUpon()
-                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                            .setOverrideForType(
-                                androidx.media3.common.TrackSelectionOverride(choice.group.mediaTrackGroup, choice.index)
-                            )
-                            .build()
-                    }
-
-                    // Runs after PlayerView's own listener, so the cleaned cues are what show.
-                    override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
-                        // The player cleared the view (a seek): the addon lines go back next tick.
-                        if (activeAddonTrack != null) {
-                            shownAddonLines = null
-                            return
-                        }
-                        if (subs.stripSdh) playerView.subtitleView?.setCues(subs.filterCues(cueGroup.cues))
-                    }
-
-                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                        if (reconnect(it, error)) return
-                        // The message shows on the streams screen; elsewhere (trailers, …) a toast instead.
-                        if (playerReturnScreen == "streams") playbackError = "Couldn't play that stream (${error.errorCodeName}). " +
-                            "Try another one, or hold OK on it to open it in another app."
-                        else android.widget.Toast.makeText(this@MainActivity,
-                            if (playingTarget == null) "Couldn't play the trailer." else "Couldn't play that stream.",
-                            android.widget.Toast.LENGTH_LONG).show()
-                        leavePlayer()
-                    }
-
-                    override fun onPlaybackStateChanged(state: Int) {
-                        if (state != androidx.media3.common.Player.STATE_ENDED) return
-                        // A host that closes the connection early can look like the end of
-                        // the file: pick up where it stopped rather than finishing the episode.
-                        val duration = it.duration
-                        val position = it.currentPosition
-                        if (playingTarget != null && duration > 0 && position < duration - 120_000 &&
-                            position < duration * 9 / 10 && reconnect(it, null)) return
-                        saveProgress(finished = true)
-                        scrobble("stop")
-                        if (playerSettings.autoplayNext) nextEpisode?.let { playNextEpisode(it) }
-                    }
-
-                    override fun onRenderedFirstFrame() {
-                        if (audioHeldFrom == null) hideLoadingOverlay()
-                    }
-
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        // Without this the TV's screensaver (and then sleep) starts part way
-                        // through a film, which stops Orbit and closes the player.
-                        playerView.keepScreenOn = isPlaying
-                        if (isPlaying && audioHeldFrom == null) hideLoadingOverlay()
-                        if (isPlaying && audioHeldFrom == null) scrobble("start")
-                    }
-
-                    // Paused by the viewer (not just buffering).
-                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                        if (!playWhenReady && audioHeldFrom == null &&
-                            reason == androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) scrobble("pause")
-                    }
-
-                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                        if (playerSettings.matchFrameRate) matchFrameRate(it)
-                    }
-                })
-                // Addon subtitles are shown by Orbit (see AddonSubtitleTrack), ranked so the
-                // ones made for this release come first.
-                playingAddonSubs = AddonSubtitleTrack.rank(
-                    StremioSubtitles.pick(
-                        addonSubtitles, listOf(subs.language, subs.secondLanguage).filter { l -> l.isNotBlank() },
-                        subs.onlyPreferred, perPreferred = 8, total = 24
-                    ),
-                    playingStream?.filename
-                )
-                if (startAtMs > 0) it.setMediaSource(built.mediaSource, startAtMs) else it.setMediaSource(built.mediaSource)
-                it.prepare()
-                it.play()
-            }
-    }
-
-    private var reconnects = 0
-    private var lastReconnectAt = 0L
-
-    // The connection to the file host dropped (or a read timed out): carry on from the same
-    // point instead of closing the player. Up to five tries; the count starts again once
-    // playback has run for a couple of minutes. error is null for a too-early end of file.
-    private fun reconnect(p: ExoPlayer, error: androidx.media3.common.PlaybackException?): Boolean {
-        if (playingTarget == null) return false // trailers
-        // Network and server errors only; a file the TV can't decode won't get better.
-        if (error != null && error.errorCode !in 2000..2999 &&
-            error.errorCode != androidx.media3.common.PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) return false
-        val now = System.currentTimeMillis()
-        if (now - lastReconnectAt > 120_000) reconnects = 0
-        if (reconnects >= 5) return false
-        reconnects++
-        lastReconnectAt = now
-        val position = p.currentPosition
-        loadingStatus.text = "Reconnecting..."
-        android.widget.Toast.makeText(this, "Connection dropped, reconnecting...", android.widget.Toast.LENGTH_SHORT).show()
-        progressHandler.postDelayed({
-            if (player !== p) return@postDelayed
-            p.seekTo(position)
-            p.prepare()
-            p.play()
-        }, 1500L * reconnects)
-        return true
-    }
-
-    private fun isDescendantOf(view: View, parent: View): Boolean {
+    internal fun isDescendantOf(view: View, parent: View): Boolean {
         var current: View? = view
         while (current != null) {
             if (current === parent) return true
@@ -5897,516 +5547,24 @@ class MainActivity : Activity() {
         return false
     }
 
-    // Subtitle menu in the player: Off plus every subtitle track, the current one ticked.
-    private fun showSubtitleMenu() {
-        val p = player ?: return
-        val entries = mutableListOf<Pair<String, (() -> Unit)>>()
-        var selected = 0
-        val textDisabled = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
-        entries += ("Audio delay (lip sync):  " + formatAudioDelay(audioDelayMs)) to { showAudioDelay() }
-        val delayLabel = "Subtitle delay:  " + formatDelay(subtitleDelayMs)
-        entries += delayLabel to { showSubtitleDelay() }
-        entries += "Off" to {
-            hideAddonSubtitle()
-            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                .build()
-        }
-        selected = 2
-        p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.forEach { group ->
-            for (i in 0 until group.length) {
-                if (!group.isTrackSupported(i)) continue
-                val f = group.getTrackFormat(i)
-                val language = SubtitleSettings.normalize(f.language)
-                    ?.let { java.util.Locale(it).displayLanguage.takeIf { d -> d.isNotBlank() && d != it } ?: it }
-                    ?: "Unknown language"
-                // Addon tracks carry "Addon · Language"; the file's own get the language plus tags.
-                val name = f.label?.takeIf { "  ·  " in it } ?: listOfNotNull(
-                    language,
-                    f.label?.takeIf { it.isNotBlank() && !it.equals(language, true) },
-                    "Forced".takeIf { SubtitleSettings.isForced(f) && f.label?.contains("forced", true) != true },
-                    "SDH".takeIf { SubtitleSettings.isSdh(f) && f.label?.contains("sdh", true) != true },
-                    "in video"
-                ).joinToString("  ·  ")
-                if (!textDisabled && activeAddonTrack == null && group.isTrackSelected(i)) selected = entries.size
-                entries += name to {
-                    hideAddonSubtitle()
-                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                        .setOverrideForType(androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, i))
-                        .build()
-                }
-            }
-        }
-        // Addon subtitles, best release match first.
-        val group = AddonSubtitleTrack.releaseGroup(playingStream?.filename.orEmpty())
-        playingAddonSubs.forEach { sub ->
-            val language = SubtitleSettings.normalize(sub.language)
-                ?.let { java.util.Locale(it).displayLanguage.takeIf { d -> d.isNotBlank() && d != it } ?: it }
-                ?: sub.language
-            val matches = group != null && sub.releaseName.contains(group, ignoreCase = true)
-            // The release it was made for, shortened: picking the one closest to the
-            // playing file is what keeps it in sync.
-            val release = sub.releaseName.replace(Regex("\\.(srt|vtt|sub|ass)$", RegexOption.IGNORE_CASE), "")
-                .replace(Regex("^v3\\+\\|\\d+\\|"), "").replace('.', ' ').trim()
-                .let { if (it.length > 46) it.take(45) + "…" else it }
-            val name = listOfNotNull(
-                language,
-                "Forced".takeIf { sub.forced },
-                "Matches your file".takeIf { matches },
-                release.takeIf { it.isNotBlank() },
-                sub.addonName
-            ).joinToString("  ·  ")
-            if (activeAddonTrack?.subtitle == sub) selected = entries.size
-            entries += name to { showAddonSubtitle(sub) }
-        }
-        if (entries.size == 3) {
-            android.widget.Toast.makeText(this, "This video has no subtitles", android.widget.Toast.LENGTH_SHORT).show()
-            return
-        }
-        // Number repeated names (several files from one addon in one language).
-        val counts = entries.groupingBy { it.first }.eachCount()
-        val seen = mutableMapOf<String, Int>()
-        val names = entries.map { (name, _) ->
-            if ((counts[name] ?: 0) < 2) name
-            else "$name  ·  ${seen.merge(name, 1, Int::plus)}"
-        }
-        choose("Subtitles and audio", names, selected) { entries[it].second() }
-    }
-
-    // ---- Skip intro, next episode, frame-rate matching ---------------------------------
-
-    private val extrasTicker = object : Runnable {
+    internal val extrasTicker = object : Runnable {
         override fun run() {
             updatePlayerAction()
             progressHandler.postDelayed(this, 500)
         }
     }
 
-    private fun startPlayerExtras(watchId: String?, target: WatchTarget?) {
-        playingSegments = emptyList()
-        frameTimer = null
-        activeAddonTrack = null
-        subtitleDelayMs = 0L
-        progressHandler.removeCallbacks(addonSubtitleTicker)
-        autoSkipped.clear()
-        nextEpisode = null
-        playerAction.visibility = View.GONE
-        progressHandler.removeCallbacks(extrasTicker)
-        progressHandler.postDelayed(extrasTicker, 1000)
-        val id = watchId ?: return
-        thread {
-            val segments = if (playerSettings.skipIntro != "Off") IntroDb.fetch(id) else emptyList()
-            val next = if (target?.type == "series" && playerSettings.nextEpisodeButton) findNextEpisode(id, target) else null
-            Handler(Looper.getMainLooper()).post {
-                if (playingId != id) return@post
-                playingSegments = segments
-                nextEpisode = next
-            }
-        }
-    }
-
-    private fun stopPlayerExtras() {
-        progressHandler.removeCallbacks(extrasTicker)
-        progressHandler.removeCallbacks(addonSubtitleTicker)
-        activeAddonTrack = null
-        playerView.subtitleView?.setCues(emptyList())
-        frameTimer = null
-        playerAction.visibility = View.GONE
-        restoreDisplayMode()
-    }
-
-    // Shows (or auto-runs) the action for the current position.
-    private fun updatePlayerAction() {
-        val p = player ?: return
-        val position = p.currentPosition
-        val duration = p.duration.takeIf { it > 0 } ?: 0L
-        val skippable = playingSegments.firstOrNull {
-            (it.type == "intro" || it.type == "recap") && position >= it.startMs && position < it.endMs - 1000
-        }
-        if (skippable != null && playerSettings.skipIntro != "Off") {
-            val key = "${skippable.type}@${skippable.startMs}"
-            if (playerSettings.skipIntro == "Skip automatically" && autoSkipped.add(key)) {
-                p.seekTo(skippable.endMs)
-                android.widget.Toast.makeText(this, "Skipped ${skippable.type}", android.widget.Toast.LENGTH_SHORT).show()
-                return
-            }
-            showPlayerAction(if (skippable.type == "recap") "Skip recap" else "Skip intro") { p.seekTo(skippable.endMs) }
-            return
-        }
-        // Next episode from the start of the credits, or the last 45 s without credit times.
-        val next = nextEpisode
-        val creditsStart = playingSegments.firstOrNull { it.type == "outro" }?.startMs
-            ?: (duration - 45_000).takeIf { duration > 0 }
-        if (next != null && creditsStart != null && position >= creditsStart && duration > 0) {
-            showPlayerAction("Next episode  ▸  S${next.target.season} · E${next.target.episode}") { playNextEpisode(next) }
-            // Look for its stream ahead of time, so OK starts it straight away.
-            if (!next.searched) {
-                next.searched = true
-                thread { findNextStream(next) }
-            }
-            return
-        }
-        playerAction.visibility = View.GONE
-    }
-
-    private fun showPlayerAction(label: String, run: () -> Unit) {
-        playerActionRun = run
-        if (playerAction.text != "$label    OK") playerAction.text = "$label    OK"
-        if (playerAction.visibility != View.VISIBLE) playerAction.visibility = View.VISIBLE
-    }
-
-    // The next episode in the season, else the first of the next season. Call off the
-    // main thread.
-    private fun findNextEpisode(id: String, target: WatchTarget): NextEpisode? = try {
-        val key = BuildConfig.TMDB_API_KEY
-        val showImdb = id.substringBefore(':')
-        val seasons = TmdbTest.fetchTvSeasons(target.tvId, key).filter { it.seasonNumber >= 1 }
-        val current = seasons.firstOrNull { it.seasonNumber == target.season }
-        val (season, episode) = when {
-            current != null && target.episode < current.episodeCount -> target.season to target.episode + 1
-            else -> seasons.firstOrNull { it.seasonNumber > target.season }?.let { it.seasonNumber to 1 }
-        } ?: return null
-        val name = TmdbTest.fetchTvEpisodes(target.tvId, season, key)
-            .firstOrNull { it.episodeNumber == episode }?.name.orEmpty()
-        NextEpisode(
-            target.copy(season = season, episode = episode, episodeLabel = "S$season · E$episode  $name"),
-            "$showImdb:$season:$episode"
-        )
-    } catch (_: Exception) {
-        null
-    }
-
-    // Prefers the same release (Stremio's bingeGroup) from the same addon, as Stremio does.
-    private fun findNextStream(next: NextEpisode) {
-        // Its sources page then opens with the streams already found.
-        StreamSearch.prefetch("series", next.id)
-        val current = playingStream
-        val addons = StremioStreams.addonsFor("series", next.id)
-            .sortedByDescending { it.name == current?.addonName }
-        for (addon in addons) {
-            val streams = try {
-                StremioStreams.fetchStreams(addon, "series", next.id).filter { it.url != null }
-            } catch (_: Exception) {
-                continue
-            }
-            val pick = streams.firstOrNull { current?.bingeGroup != null && it.bingeGroup == current.bingeGroup }
-                ?: streams.firstOrNull().takeIf { addon.name == current?.addonName }
-            if (pick != null) {
-                next.stream = pick
-                break
-            }
-        }
-        next.subtitles = if (subtitleSettings.addonSubtitles) try {
-            StremioSubtitles.fetch("series", next.id)
-        } catch (_: Exception) {
-            emptyList()
-        } else emptyList()
-    }
-
-    private fun playNextEpisode(next: NextEpisode) {
-        playerAction.visibility = View.GONE
-        saveProgress()
-        val play = {
-            val stream = next.stream
-            // Back from the next episode leads to the show, on that episode.
-            lastTvId = next.target.tvId
-            lastFilmTitle = next.target.title
-            lastPosterFile = next.target.poster
-            seasonByShow[next.target.tvId] = next.target.season
-            episodeFocusIndex = next.target.episode - 1
-            playerReturnScreen = "tv_details"
-            if (stream?.url != null) {
-                playingStream = stream
-                startPlayback(stream.url, stream.headers, next.id, next.target, 0L, next.subtitles)
-            } else {
-                // No matching stream: choose one from the next episode's list.
-                stopPlayerExtras()
-                player?.release()
-                player = null
-                currentScreen = "tv_details"
-                showStreams("series", "${next.target.title}  ·  S${next.target.season} E${next.target.episode}", next.target) { next.id }
-            }
-        }
-        if (next.searched && next.stream != null) {
-            play()
-        } else {
-            android.widget.Toast.makeText(this, "Finding the next episode...", android.widget.Toast.LENGTH_SHORT).show()
-            thread {
-                if (next.stream == null) findNextStream(next)
-                next.searched = true
-                Handler(Looper.getMainLooper()).post { if (currentScreen == "player") play() }
-            }
-        }
-    }
-
-    // Switches the TV to the video's frame rate (e.g. 23.976 Hz for films) so motion is
-    // smooth; the picture blanks briefly while the TV changes mode, so playback waits.
-    // MKV files usually don't state their frame rate; then it's measured from the timing of
-    // the first frames shown.
-    private fun matchFrameRate(p: ExoPlayer) {
-        val stated = p.videoFormat?.frameRate ?: -1f
-        if (stated > 0f) {
-            matchFrameRate(p, stated)
-            return
-        }
-        if (frameTimer != null) return
-        val times = java.util.Collections.synchronizedList(mutableListOf<Long>())
-        val timer = androidx.media3.exoplayer.video.VideoFrameMetadataListener { presentationUs, _, _, _ ->
-            if (times.size < 48) times.add(presentationUs)
-            if (times.size == 48) {
-                times.add(-1) // done
-                // Average over the whole span: MKV times are rounded to the millisecond, so a
-                // single gap can't tell 23.976 from 24.
-                val sorted = times.dropLast(1).distinct().sorted()
-                val span = sorted.last() - sorted.first()
-                if (sorted.size < 10 || span <= 0) {
-                    Handler(Looper.getMainLooper()).post { if (player === p) releaseAudio(p, 0) }
-                    return@VideoFrameMetadataListener
-                }
-                val fps = FrameRate.snap((sorted.size - 1) * 1_000_000f / span)
-                Handler(Looper.getMainLooper()).post {
-                    frameTimer?.let { t -> p.clearVideoFrameMetadataListener(t) }
-                    if (player !== p) return@post
-                    if (fps > 0f) matchFrameRate(p, fps) else releaseAudio(p, 0)
-                }
-            }
-        }
-        frameTimer = timer
-        p.setVideoFrameMetadataListener(timer)
-    }
-
-    private var frameTimer: androidx.media3.exoplayer.video.VideoFrameMetadataListener? = null
-
-    private fun matchFrameRate(p: ExoPlayer, fps: Float) {
-        val display = window.decorView.display
-        val mode = display?.let { FrameRate.bestMode(it, fps) }
-        if (display == null || mode == null || mode.modeId == display.mode.modeId) {
-            releaseAudio(p, 0) // already right (or can't change): start the sound now
-            return
-        }
-        if (originalDisplayMode == 0) originalDisplayMode = display.mode.modeId
-        if (audioHeldFrom != null) {
-            loadingStatus.text = "Matching your TV's frame rate..."
-            p.playWhenReady = false
-            window.attributes = window.attributes.apply { preferredDisplayModeId = mode.modeId }
-            releaseAudio(p, 2500)
-            return
-        }
-        val wasPlaying = p.playWhenReady
-        p.playWhenReady = false
-        window.attributes = window.attributes.apply { preferredDisplayModeId = mode.modeId }
-        progressHandler.postDelayed({ if (player === p && wasPlaying) p.playWhenReady = true }, 2500)
-    }
+    internal var frameTimer: androidx.media3.exoplayer.video.VideoFrameMetadataListener? = null
 
     // Where playback started while its sound is held back; null once the sound is on.
     // The frame rate is often only known from the first frames played, and switching the
     // TV's mode re-syncs HDMI: with Dolby Atmos (or any bitstream to a receiver) already
     // playing, that's an audible glitch. So the first moments play silently under the
     // loading overlay, the TV switches, and playback restarts from the start point with sound.
-    private var audioHeldFrom: Long? = null
-
-    private fun holdAudioForFrameRate(p: ExoPlayer, startAtMs: Long) {
-        audioHeldFrom = startAtMs
-        // Some videos never report frames (or a rate): don't keep the sound off for long.
-        progressHandler.postDelayed({ releaseAudio(p, 0) }, 8000)
-    }
-
-    private fun releaseAudio(p: ExoPlayer, delayMs: Long) {
-        if (player !== p) return // a later video has its own hold
-        val from = audioHeldFrom ?: return
-        audioHeldFrom = null
-        p.playWhenReady = false
-        progressHandler.postDelayed({
-            if (player !== p) return@postDelayed
-            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-                .build()
-            p.seekTo(from)
-            p.playWhenReady = true
-        }, delayMs)
-    }
-
-    private fun restoreDisplayMode() {
-        if (originalDisplayMode == 0) return
-        window.attributes = window.attributes.apply { preferredDisplayModeId = 0 }
-        originalDisplayMode = 0
-    }
-
-    private fun formatDelay(ms: Long) =
-        (if (ms > 0) "+" else if (ms < 0) "−" else "") + String.format(java.util.Locale.US, "%.1f s", kotlin.math.abs(ms) / 1000.0)
-
-    // Loads (once) and shows an addon subtitle, turning the video's own subtitles off.
-    private fun showAddonSubtitle(sub: StremioSubtitles.Subtitle) {
-        val p = player ?: return
-        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            .build()
-        val start = { track: AddonSubtitleTrack ->
-            activeAddonTrack = track
-            shownAddonLines = null
-            progressHandler.removeCallbacks(addonSubtitleTicker)
-            progressHandler.post(addonSubtitleTicker)
-        }
-        loadedAddonTracks[sub.url]?.let { start(it); return }
-        thread {
-            val track = AddonSubtitleTrack.load(sub)
-            Handler(Looper.getMainLooper()).post {
-                if (player !== p) return@post
-                if (track == null) {
-                    android.widget.Toast.makeText(this, "Couldn't load that subtitle", android.widget.Toast.LENGTH_SHORT).show()
-                    return@post
-                }
-                loadedAddonTracks[sub.url] = track
-                start(track)
-            }
-        }
-    }
-
-    private fun hideAddonSubtitle() {
-        activeAddonTrack = null
-        progressHandler.removeCallbacks(addonSubtitleTicker)
-        playerView.subtitleView?.setCues(emptyList())
-    }
-
-    // Shift addon subtitles: + shows them later, − earlier. Applies straight away.
-    private fun showSubtitleDelay() {
-        val value = Ui.text(this, Ui.Type.Title, formatDelay(subtitleDelayMs)).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, 10, 0, 6)
-        }
-        val note = Ui.text(
-            this, Ui.Type.Label,
-            if (activeAddonTrack != null) "+ shows subtitles later, − earlier."
-            else "Works with addon subtitles (e.g. OpenSubtitles); choose one first.",
-            Ui.textSecondary
-        ).apply { gravity = Gravity.CENTER; setPadding(0, 0, 0, 22) }
-        val buttons = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        listOf("−1 s" to -1000L, "−0.1 s" to -100L, "Reset" to 0L, "+0.1 s" to 100L, "+1 s" to 1000L).forEach { (label, step) ->
-            buttons.addView(Ui.pill(this, label) {
-                subtitleDelayMs = if (step == 0L) 0L else subtitleDelayMs + step
-                value.text = formatDelay(subtitleDelayMs)
-            }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 8; rightMargin = 8 })
-        }
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 20, 40, 10)
-            addView(value)
-            addView(note)
-            addView(buttons)
-        }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Subtitle delay")
-            .setView(content)
-            .setPositiveButton("Done", null)
-            .show()
-        buttons.getChildAt(3)?.requestFocus()
-    }
-
-    private fun formatAudioDelay(ms: Long) = (if (ms > 0) "+" else if (ms < 0) "−" else "") + "${kotlin.math.abs(ms)} ms"
-
-    // Lip sync: shifts the sound against the picture (NuvioTV's audio delay). Kept for next time.
-    private fun showAudioDelay() {
-        val value = Ui.text(this, Ui.Type.Title, formatAudioDelay(audioDelayMs)).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, 10, 0, 6)
-        }
-        val note = Ui.text(this, Ui.Type.Label,
-            "+ if the sound comes before the lips move, − if it comes after. Remembered for every video.",
-            Ui.textSecondary).apply { gravity = Gravity.CENTER; setPadding(0, 0, 0, 22) }
-        val buttons = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        listOf("−100" to -100L, "−20" to -20L, "Reset" to 0L, "+20" to 20L, "+100" to 100L).forEach { (label, step) ->
-            buttons.addView(Ui.pill(this, label) {
-                audioDelayMs = if (step == 0L) 0L else (audioDelayMs + step).coerceIn(-2000L, 2000L)
-                value.text = formatAudioDelay(audioDelayMs)
-            }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 8; rightMargin = 8 })
-        }
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 20, 40, 10)
-            addView(value)
-            addView(note)
-            addView(buttons)
-        }
-        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Audio delay")
-            .setView(content)
-            .setPositiveButton("Done", null)
-            // Samples already buffered carry the old timing; a seek in place re-reads them.
-            .setOnDismissListener { player?.let { it.seekTo(it.currentPosition) } }
-            .show()
-        buttons.getChildAt(3)?.requestFocus()
-    }
-
-    private fun leavePlayer() {
-        audioHeldFrom = null
-        playerView.keepScreenOn = false
-        hideLoadingOverlay(animate = false)
-        progressHandler.removeCallbacks(progressTicker)
-        stopPlayerExtras()
-        saveProgress(pushNow = true)
-        scrobble("stop")
-        scrobbleItem = null
-        playingId = null
-        playingTarget = null
-        playerView.player = null
-        player?.release()
-        player = null
-        (playerFrame.parent as? ViewGroup)?.removeView(playerFrame)
-        setContentView(contentScroll)
-        when (playerReturnScreen) {
-            "streams" -> showStreamsScreen()
-            "tv_details" -> showTvDetails(lastTvId, lastFilmTitle, lastPosterFile)
-            "details" -> showFilmDetails(lastFilmTitle, lastPosterFile)
-            else -> showHomeScreen()
-        }
-    }
-
-    // While the player controls are hidden: OK pauses/resumes, left/right skip 10 seconds.
-    private fun handlePlayerKey(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_UP && event.keyCode == swallowKeyUp) {
-            swallowKeyUp = -1
-            return true
-        }
-        if (event.action != KeyEvent.ACTION_DOWN || playerView.isControllerFullyVisible) {
-            return false
-        }
-        val p = player ?: return false
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                // With Skip intro / Next episode on screen, OK presses it.
-                if (playerAction.visibility == View.VISIBLE) {
-                    playerActionRun?.invoke()
-                    swallowKeyUp = event.keyCode
-                    return true
-                }
-                if (p.isPlaying) p.pause() else p.play()
-            }
-            KeyEvent.KEYCODE_DPAD_LEFT -> p.seekTo((p.currentPosition - 10_000).coerceAtLeast(0))
-            KeyEvent.KEYCODE_DPAD_RIGHT -> p.seekTo(p.currentPosition + 10_000)
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CAPTIONS, KeyEvent.KEYCODE_MENU -> {
-                showSubtitleMenu()
-                swallowKeyUp = event.keyCode
-                return true
-            }
-            else -> return false
-        }
-        playerView.showController()
-        // The matching key-up would otherwise press whichever control just got focus.
-        swallowKeyUp = event.keyCode
-        return true
-    }
+    internal var audioHeldFrom: Long? = null
 
     // Up/down on the home screen moves between rows and returns to the poster last used in each.
-    private fun handleHomeKey(event: KeyEvent): Boolean {
+    internal fun handleHomeKey(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
         val up = event.keyCode == KeyEvent.KEYCODE_DPAD_UP
         if (!up && event.keyCode != KeyEvent.KEYCODE_DPAD_DOWN) return false
