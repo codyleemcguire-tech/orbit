@@ -108,6 +108,11 @@ class MainActivity : Activity() {
     private var playingAddonSubs: List<StremioSubtitles.Subtitle> = emptyList()
     private var activeAddonTrack: AddonSubtitleTrack? = null
     private var subtitleDelayMs = 0L
+    // Lip sync: + plays the sound later, − earlier (NuvioTV's audio delay). Remembered,
+    // since it depends on the TV and sound system rather than the video.
+    private var audioDelayMs: Long
+        get() = prefs.getLong("audio_delay_ms", 0L)
+        set(v) { prefs.edit().putLong("audio_delay_ms", v).apply() }
     private val loadedAddonTracks = mutableMapOf<String, AddonSubtitleTrack>()
     private var shownAddonLines: List<String>? = null
     private val addonSubtitleTicker = object : Runnable {
@@ -2607,6 +2612,9 @@ class MainActivity : Activity() {
                     render("Play with")
                 }
             }
+            toggle("Tunnelled playback", ps.tunneling,
+                "Let the TV's hardware keep sound and picture together. Can help lip sync and " +
+                    "smoothness on some TVs; turn it off again if videos stutter or won't start.") { ps.tunneling = it }
             toggle("Match frame rate", ps.matchFrameRate,
                 "Switch the TV to the video's frame rate (e.g. 24 Hz for films) for smoother motion. " +
                     "The screen goes dark for a moment while the TV switches.") { ps.matchFrameRate = it }
@@ -5693,24 +5701,13 @@ class MainActivity : Activity() {
         startPlayerExtras(watchId, target)
 
         player?.release()
-        // Debrid links redirect to the file host and some addons need request headers.
-        val http = androidx.media3.datasource.DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(20000)
-            .setReadTimeoutMs(30000)
-            .setDefaultRequestProperties(headers)
-        val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(this)
-            // Try other decoders when the preferred one can't handle a stream.
-            .setEnableDecoderFallback(true)
-        // A longer buffer than Media3's default, so a slow patch on the file host doesn't stop
-        // playback; capped by memory, since 4K remuxes fill a buffer quickly.
-        val bufferBytes = (Runtime.getRuntime().maxMemory() / 3)
-            .coerceIn(48L * 1024 * 1024, 200L * 1024 * 1024).toInt()
-        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-            .setBufferDurationsMs(30_000, 120_000, 2_500, 5_000)
-            .setTargetBufferBytes(bufferBytes)
-            .setPrioritizeTimeOverSizeThresholds(false)
-            .build()
+        // NuvioTV's engine and its defaults (see NuvioEngine); addon request headers go with
+        // every request.
+        val built = NuvioEngine.build(
+            this, window.decorView.display, url, headers,
+            if (".m3u8" in url) androidx.media3.common.MimeTypes.APPLICATION_M3U8 else null,
+            playerSettings.tunneling
+        ) { audioDelayMs * 1000L }
         reconnects = 0
         lastReconnectAt = 0L
         val subs = subtitleSettings
@@ -5721,16 +5718,7 @@ class MainActivity : Activity() {
             showSubtitleMenu()
         }
         var subtitleChosen = false
-        player = ExoPlayer.Builder(this, renderers)
-            .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
-                    .setDataSourceFactory(http)
-                    // Keep trying a dropped connection for a while before giving up.
-                    .setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(8))
-            )
-            .setLoadControl(loadControl)
-            .setWakeMode(C.WAKE_MODE_NETWORK)
-            .build()
+        player = built.player
             .also {
                 // Orbit picks the subtitle track itself (see SubtitleSettings.choose), so the
                 // player starts with subtitles off; the preferred audio language goes first.
@@ -5829,10 +5817,7 @@ class MainActivity : Activity() {
                     ),
                     playingStream?.filename
                 )
-                val item = MediaItem.Builder().setUri(url).apply {
-                    if (".m3u8" in url) setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
-                }.build()
-                if (startAtMs > 0) it.setMediaItem(item, startAtMs) else it.setMediaItem(item)
+                if (startAtMs > 0) it.setMediaSource(built.mediaSource, startAtMs) else it.setMediaSource(built.mediaSource)
                 it.prepare()
                 it.play()
             }
@@ -5881,6 +5866,7 @@ class MainActivity : Activity() {
         val entries = mutableListOf<Pair<String, (() -> Unit)>>()
         var selected = 0
         val textDisabled = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        entries += ("Audio delay (lip sync):  " + formatAudioDelay(audioDelayMs)) to { showAudioDelay() }
         val delayLabel = "Subtitle delay:  " + formatDelay(subtitleDelayMs)
         entries += delayLabel to { showSubtitleDelay() }
         entries += "Off" to {
@@ -5890,7 +5876,7 @@ class MainActivity : Activity() {
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                 .build()
         }
-        selected = 1
+        selected = 2
         p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.forEach { group ->
             for (i in 0 until group.length) {
                 if (!group.isTrackSupported(i)) continue
@@ -5938,7 +5924,7 @@ class MainActivity : Activity() {
             if (activeAddonTrack?.subtitle == sub) selected = entries.size
             entries += name to { showAddonSubtitle(sub) }
         }
-        if (entries.size == 2) {
+        if (entries.size == 3) {
             android.widget.Toast.makeText(this, "This video has no subtitles", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
@@ -5949,7 +5935,7 @@ class MainActivity : Activity() {
             if ((counts[name] ?: 0) < 2) name
             else "$name  ·  ${seen.merge(name, 1, Int::plus)}"
         }
-        choose("Subtitles", names, selected) { entries[it].second() }
+        choose("Subtitles and audio", names, selected) { entries[it].second() }
     }
 
     // ---- Skip intro, next episode, frame-rate matching ---------------------------------
@@ -6279,6 +6265,44 @@ class MainActivity : Activity() {
             .setTitle("Subtitle delay")
             .setView(content)
             .setPositiveButton("Done", null)
+            .show()
+        buttons.getChildAt(3)?.requestFocus()
+    }
+
+    private fun formatAudioDelay(ms: Long) = (if (ms > 0) "+" else if (ms < 0) "−" else "") + "${kotlin.math.abs(ms)} ms"
+
+    // Lip sync: shifts the sound against the picture (NuvioTV's audio delay). Kept for next time.
+    private fun showAudioDelay() {
+        val value = Ui.text(this, Ui.Type.Title, formatAudioDelay(audioDelayMs)).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, 10, 0, 6)
+        }
+        val note = Ui.text(this, Ui.Type.Label,
+            "+ if the sound comes before the lips move, − if it comes after. Remembered for every video.",
+            Ui.textSecondary).apply { gravity = Gravity.CENTER; setPadding(0, 0, 0, 22) }
+        val buttons = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        listOf("−100" to -100L, "−20" to -20L, "Reset" to 0L, "+20" to 20L, "+100" to 100L).forEach { (label, step) ->
+            buttons.addView(Ui.pill(this, label) {
+                audioDelayMs = if (step == 0L) 0L else (audioDelayMs + step).coerceIn(-2000L, 2000L)
+                value.text = formatAudioDelay(audioDelayMs)
+            }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 8; rightMargin = 8 })
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 20, 40, 10)
+            addView(value)
+            addView(note)
+            addView(buttons)
+        }
+        android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Audio delay")
+            .setView(content)
+            .setPositiveButton("Done", null)
+            // Samples already buffered carry the old timing; a seek in place re-reads them.
+            .setOnDismissListener { player?.let { it.seekTo(it.currentPosition) } }
             .show()
         buttons.getChildAt(3)?.requestFocus()
     }

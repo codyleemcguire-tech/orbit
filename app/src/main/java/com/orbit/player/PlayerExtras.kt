@@ -15,8 +15,12 @@ class PlayerSettings(private val prefs: SharedPreferences) {
         set(v) = prefs.edit().putBoolean("next_episode_button", v).apply()
     var autoplayNext: Boolean get() = prefs.getBoolean("autoplay_next", false)
         set(v) = prefs.edit().putBoolean("autoplay_next", v).apply()
-    var matchFrameRate: Boolean get() = prefs.getBoolean("match_frame_rate", true)
+    // Off by default, as in NuvioTV: switching the TV's mode takes a moment at the start.
+    var matchFrameRate: Boolean get() = prefs.getBoolean("match_frame_rate", false)
         set(v) = prefs.edit().putBoolean("match_frame_rate", v).apply()
+    // Tunnelled playback: the TV's hardware keeps sound and picture together (NuvioTV setting).
+    var tunneling: Boolean get() = prefs.getBoolean("tunneling", false)
+        set(v) = prefs.edit().putBoolean("tunneling", v).apply()
     // "Orbit", "Ask each time" or the name of an external player (see externalPlayers).
     var playWith: String get() = prefs.getString("play_with", "Orbit") ?: "Orbit"
         set(v) = prefs.edit().putString("play_with", v).apply()
