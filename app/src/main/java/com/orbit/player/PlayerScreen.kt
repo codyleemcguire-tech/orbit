@@ -153,7 +153,7 @@ internal fun MainActivity.showLoadingOverlay(watchId: String?, target: WatchTarg
         listOf(st.addonName, badges).filter { it.isNotBlank() }.joinToString("  ·  ")
     }.orEmpty()
     loadingSource.visibility = if (loadingSource.text.isEmpty()) View.GONE else View.VISIBLE
-    playerView.useController = false
+    playerControls.release()
     loadingOverlay.animate().cancel()
     loadingOverlay.alpha = 1f
     loadingOverlay.visibility = View.VISIBLE
@@ -182,6 +182,11 @@ internal fun MainActivity.showLoadingOverlay(watchId: String?, target: WatchTarg
             null
         }
         Handler(Looper.getMainLooper()).post {
+            if (details != null && playingId == watchId) {
+                playingDetails = details
+                updateControlsInfo()
+                if (tmdbSettings.logos) details.logoPath?.let { path -> showLogo(pauseOverlay.logo, path) {} }
+            }
             if (request != loadingRequest || loadingOverlay.visibility != View.VISIBLE || details == null) return@post
             details.metadata.backdropPath?.let { path ->
                 loadPosterImage(loadingBackdrop, path, "w1280", targetWidth = 1280)
@@ -198,7 +203,6 @@ internal fun MainActivity.showLoadingOverlay(watchId: String?, target: WatchTarg
 
 internal fun MainActivity.hideLoadingOverlay(animate: Boolean = true) {
     loadingRequest++
-    playerView.useController = true
     if (loadingOverlay.visibility != View.VISIBLE) return
     if (!animate) {
         loadingOverlay.visibility = View.GONE
@@ -251,11 +255,11 @@ internal fun MainActivity.startPlayback(
     lastReconnectAt = 0L
     val subs = subtitleSettings
     subs.applyStyle(playerView.subtitleView)
-    // The control bar's CC button opens Orbit's subtitle menu rather than Media3's own.
-    playerView.setShowSubtitleButton(true)
-    playerView.findViewById<View>(androidx.media3.ui.R.id.exo_subtitle)?.setOnClickListener {
-        showSubtitleMenu()
-    }
+    playingDetails = null
+    playerControls.release()
+    pauseOverlay.hide()
+    pauseOverlay.logo.visibility = View.GONE
+    updateControlsInfo()
     var subtitleChosen = false
     player = built.player
         .also {
@@ -333,6 +337,11 @@ internal fun MainActivity.startPlayback(
                     // Without this the TV's screensaver (and then sleep) starts part way
                     // through a film, which stops Orbit and closes the player.
                     playerView.keepScreenOn = isPlaying
+                    // Paused (not buffering): the "You're watching" page after 5 s, as NuvioTV.
+                    progressHandler.removeCallbacks(showPauseOverlayLater)
+                    if (isPlaying) pauseOverlay.hide()
+                    else if (!it.playWhenReady && audioHeldFrom == null) progressHandler.postDelayed(showPauseOverlayLater, 5000)
+                    playerControls.refresh()
                     if (isPlaying && audioHeldFrom == null) hideLoadingOverlay()
                     if (isPlaying && audioHeldFrom == null) scrobble("start")
                 }
@@ -540,6 +549,10 @@ internal fun MainActivity.updatePlayerAction() {
 
 internal fun MainActivity.showPlayerAction(label: String, run: () -> Unit) {
     playerActionRun = run
+    if (playerControls.isShowing) {
+        playerAction.visibility = View.GONE
+        return
+    }
     if (playerAction.text != "$label    OK") playerAction.text = "$label    OK"
     if (playerAction.visibility != View.VISIBLE) playerAction.visibility = View.VISIBLE
 }
@@ -826,6 +839,9 @@ internal fun MainActivity.showAudioDelay() {
 
 internal fun MainActivity.leavePlayer() {
     audioHeldFrom = null
+    playerControls.release()
+    progressHandler.removeCallbacks(showPauseOverlayLater)
+    pauseOverlay.hide()
     playerView.keepScreenOn = false
     hideLoadingOverlay(animate = false)
     progressHandler.removeCallbacks(progressTicker)
@@ -848,37 +864,222 @@ internal fun MainActivity.leavePlayer() {
     }
 }
 
-// While the player controls are hidden: OK pauses/resumes, left/right skip 10 seconds.
+// Player keys, before the focused view sees them. The pause page closes on any key; with
+// the controls showing, focus moves through them (PlayerControls.handleShownKey); hidden,
+// OK pauses (or presses Skip intro / Next episode), Left/Right scrub, Up/Down show the
+// controls and Menu opens Subtitles.
 internal fun MainActivity.handlePlayerKey(event: KeyEvent): Boolean {
     if (event.action == KeyEvent.ACTION_UP && event.keyCode == swallowKeyUp) {
         swallowKeyUp = -1
         return true
     }
-    if (event.action != KeyEvent.ACTION_DOWN || playerView.isControllerFullyVisible) {
-        return false
-    }
-    val p = player ?: return false
-    when (event.keyCode) {
-        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-            // With Skip intro / Next episode on screen, OK presses it.
-            if (playerAction.visibility == View.VISIBLE) {
-                playerActionRun?.invoke()
-                swallowKeyUp = event.keyCode
-                return true
-            }
-            if (p.isPlaying) p.pause() else p.play()
+    if (event.keyCode == KeyEvent.KEYCODE_BACK) return false
+    if (pauseOverlay.isShowing) {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            pauseOverlay.hide()
+            swallowKeyUp = event.keyCode
         }
-        KeyEvent.KEYCODE_DPAD_LEFT -> p.seekTo((p.currentPosition - 10_000).coerceAtLeast(0))
-        KeyEvent.KEYCODE_DPAD_RIGHT -> p.seekTo(p.currentPosition + 10_000)
-        KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CAPTIONS, KeyEvent.KEYCODE_MENU -> {
+        return true
+    }
+    // Nothing to control until the video is on screen.
+    if (loadingOverlay.visibility == View.VISIBLE) return true
+    val p = player ?: return false
+    if (event.action == KeyEvent.ACTION_DOWN) when (event.keyCode) {
+        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { togglePlay(); return true }
+        KeyEvent.KEYCODE_MEDIA_PLAY -> { if (!p.playWhenReady) togglePlay(); return true }
+        KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_STOP -> { if (p.playWhenReady) togglePlay(); return true }
+        KeyEvent.KEYCODE_CAPTIONS, KeyEvent.KEYCODE_MENU -> {
             showSubtitleMenu()
             swallowKeyUp = event.keyCode
             return true
         }
+    }
+    if (playerControls.isShowing) return playerControls.handleShownKey(event)
+    if (playerControls.handleHiddenKey(event)) {
+        if (playerControls.isShowing) {
+            playerAction.visibility = View.GONE
+            swallowKeyUp = event.keyCode
+        }
+        return true
+    }
+    if (event.action != KeyEvent.ACTION_DOWN) return false
+    when (event.keyCode) {
+        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+            // With Skip intro / Next episode on screen, OK presses it.
+            if (playerAction.visibility == View.VISIBLE) playerActionRun?.invoke()
+            else togglePlay()
+        }
         else -> return false
     }
-    playerView.showController()
     // The matching key-up would otherwise press whichever control just got focus.
     swallowKeyUp = event.keyCode
     return true
+}
+
+internal fun MainActivity.togglePlay() {
+    val p = player ?: return
+    if (p.playbackState == androidx.media3.common.Player.STATE_ENDED) p.seekTo(0)
+    p.playWhenReady = !p.playWhenReady
+    playerControls.refresh()
+}
+
+// What the controls' buttons do.
+internal fun MainActivity.controlsHost() = object : PlayerControls.Host {
+    override val player: ExoPlayer? get() = this@controlsHost.player
+    override fun playPause() = togglePlay()
+    override fun nextEpisode() { nextEpisode?.let { playNextEpisode(it) } }
+    override fun subtitles() = showSubtitleMenu()
+    override fun audio() = showAudioMenu()
+    // Back to the sources page (the side panel comes later); progress is saved on the way.
+    override fun sources() = leavePlayer()
+    override fun episodes() {}
+    override fun speed() = showSpeedMenu()
+    override fun aspectRatio() = cycleAspectRatio()
+    override fun streamInfo() = showStreamInfo()
+    override fun openElsewhere() {
+        val stream = playingStream ?: return
+        leavePlayer()
+        openStreamElsewhere(stream)
+    }
+    override val hasNextEpisode get() = nextEpisode != null
+    override val hasEpisodes get() = false
+    override fun focusVideo() { playerView.requestFocus() }
+}
+
+// Title, episode, quality badges and year above the bar.
+internal fun MainActivity.updateControlsInfo() {
+    val target = playingTarget
+    val stream = playingStream
+    val details = playingDetails
+    val name = target?.title ?: details?.metadata?.title ?: stream?.name.orEmpty()
+    val episodeLine = target?.episodeLabel.orEmpty()
+    val badges = stream?.let { Ui.streamBadges("${it.name} ${it.description}") }.orEmpty()
+    val year = details?.metadata?.releaseYear.orEmpty()
+    playerControls.setInfo(name, episodeLine, badges, year)
+}
+
+// "You're watching": shown 5 s into a pause while the controls are hidden.
+internal fun MainActivity.showPauseOverlay() {
+    val p = player ?: return
+    if (p.playWhenReady || playerControls.isShowing || currentScreen != "player" ||
+        loadingOverlay.visibility == View.VISIBLE) return
+    val target = playingTarget ?: return // trailers
+    val details = playingDetails
+    // "S1 · E2  Pilot": the code goes with the year, the name on its own line.
+    val label = target.episodeLabel
+    val code = label.substringBefore("  ").trim()
+    val episodeName = if ("  " in label) label.substringAfter("  ").trim() else ""
+    val meta = listOfNotNull(details?.metadata?.releaseYear?.takeIf { it.isNotBlank() }, code.takeIf { it.isNotBlank() })
+        .joinToString("  ·  ")
+    pauseOverlay.show(target.title, meta, episodeName, details?.metadata?.overview.orEmpty())
+}
+
+// Audio tracks, plus the lip-sync delay.
+internal fun MainActivity.showAudioMenu() {
+    val p = player ?: return
+    val entries = mutableListOf<Pair<String, () -> Unit>>()
+    entries += ("Audio delay (lip sync):  " + formatAudioDelay(audioDelayMs)) to { showAudioDelay() }
+    var selected = 0
+    p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.forEach { group ->
+        for (i in 0 until group.length) {
+            if (!group.isTrackSupported(i)) continue
+            val f = group.getTrackFormat(i)
+            val language = SubtitleSettings.normalize(f.language)
+                ?.let { java.util.Locale(it).displayLanguage.takeIf { d -> d.isNotBlank() } ?: it }
+            val channels = when (f.channelCount) {
+                1 -> "Mono"; 2 -> "Stereo"; 6 -> "5.1"; 8 -> "7.1"
+                else -> if (f.channelCount > 0) "${f.channelCount} ch" else null
+            }
+            val name = listOfNotNull(language ?: "Unknown language", f.label?.takeIf { it.isNotBlank() && it != language },
+                audioCodecName(f.sampleMimeType, f.codecs), channels).distinct().joinToString("  ·  ")
+            if (group.isTrackSelected(i)) selected = entries.size
+            entries += name to {
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                    .setOverrideForType(androidx.media3.common.TrackSelectionOverride(group.mediaTrackGroup, i))
+                    .build()
+            }
+        }
+    }
+    choose("Audio", entries.map { it.first }, selected) { entries[it].second() }
+}
+
+internal fun audioCodecName(mime: String?, codecs: String?): String? = when (mime) {
+    androidx.media3.common.MimeTypes.AUDIO_E_AC3_JOC -> "Dolby Atmos"
+    androidx.media3.common.MimeTypes.AUDIO_E_AC3 -> if (codecs?.contains("ec+3") == true) "Dolby Atmos" else "Dolby Digital Plus"
+    androidx.media3.common.MimeTypes.AUDIO_AC3 -> "Dolby Digital"
+    androidx.media3.common.MimeTypes.AUDIO_TRUEHD -> "Dolby TrueHD"
+    androidx.media3.common.MimeTypes.AUDIO_AC4 -> "Dolby AC-4"
+    androidx.media3.common.MimeTypes.AUDIO_DTS -> "DTS"
+    androidx.media3.common.MimeTypes.AUDIO_DTS_HD -> "DTS-HD"
+    androidx.media3.common.MimeTypes.AUDIO_DTS_EXPRESS -> "DTS Express"
+    androidx.media3.common.MimeTypes.AUDIO_DTS_X -> "DTS:X"
+    androidx.media3.common.MimeTypes.AUDIO_AAC -> "AAC"
+    androidx.media3.common.MimeTypes.AUDIO_FLAC -> "FLAC"
+    androidx.media3.common.MimeTypes.AUDIO_OPUS -> "Opus"
+    androidx.media3.common.MimeTypes.AUDIO_MPEG -> "MP3"
+    androidx.media3.common.MimeTypes.AUDIO_VORBIS -> "Vorbis"
+    androidx.media3.common.MimeTypes.AUDIO_RAW -> "PCM"
+    else -> mime?.substringAfter('/')?.uppercase()
+}
+
+internal fun MainActivity.showSpeedMenu() {
+    val p = player ?: return
+    val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+    val names = speeds.map { if (it == 1f) "Normal" else "${it}×".replace(".0×", "×") }
+    val current = speeds.indexOfFirst { kotlin.math.abs(it - p.playbackParameters.speed) < 0.01f }.coerceAtLeast(2)
+    choose("Playback speed", names, current) { p.setPlaybackSpeed(speeds[it]) }
+}
+
+// Fit (whole picture), Zoom (fill the screen, cropping) and Stretch, in turn.
+internal fun MainActivity.cycleAspectRatio() {
+    val modes = listOf(
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT to "Fit",
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Zoom",
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL to "Stretch"
+    )
+    val next = modes[(modes.indexOfFirst { it.first == playerView.resizeMode } + 1) % modes.size]
+    playerView.resizeMode = next.first
+    android.widget.Toast.makeText(this, "Aspect ratio: ${next.second}", android.widget.Toast.LENGTH_SHORT).show()
+}
+
+// What's playing, technically: picture, sound, source and how much is buffered.
+internal fun MainActivity.showStreamInfo() {
+    val p = player ?: return
+    val v = p.videoFormat
+    val a = p.audioFormat
+    val lines = mutableListOf<String>()
+    if (v != null) {
+        val hdr = when {
+            v.sampleMimeType == androidx.media3.common.MimeTypes.VIDEO_DOLBY_VISION || v.codecs?.startsWith("dv") == true -> "Dolby Vision"
+            v.colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "HDR10"
+            v.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "HLG"
+            else -> "SDR"
+        }
+        val codec = when (v.sampleMimeType) {
+            androidx.media3.common.MimeTypes.VIDEO_H265 -> "HEVC"
+            androidx.media3.common.MimeTypes.VIDEO_H264 -> "H.264"
+            androidx.media3.common.MimeTypes.VIDEO_AV1 -> "AV1"
+            androidx.media3.common.MimeTypes.VIDEO_VP9 -> "VP9"
+            androidx.media3.common.MimeTypes.VIDEO_DOLBY_VISION -> "Dolby Vision (HEVC)"
+            else -> v.sampleMimeType?.substringAfter('/')?.uppercase()
+        }
+        val fps = if (v.frameRate > 0) String.format(java.util.Locale.US, "%.3g fps", v.frameRate) else null
+        lines += "Picture:  " + listOfNotNull("${v.width}×${v.height}", codec, hdr, fps).joinToString("  ·  ")
+        if (v.bitrate > 0) lines += "Video bitrate:  ${v.bitrate / 1_000_000} Mbps"
+    }
+    if (a != null) {
+        val channels = when (a.channelCount) { 2 -> "Stereo"; 6 -> "5.1"; 8 -> "7.1"; else -> "${a.channelCount} ch" }
+        lines += "Sound:  " + listOfNotNull(audioCodecName(a.sampleMimeType, a.codecs), channels,
+            SubtitleSettings.normalize(a.language)?.let { java.util.Locale(it).displayLanguage.ifBlank { it } }).joinToString("  ·  ")
+    }
+    lines += "Buffered:  ${((p.bufferedPosition - p.currentPosition) / 1000).coerceAtLeast(0)} s ahead"
+    playingStream?.let { st ->
+        lines += "Source:  ${st.addonName}"
+        st.filename?.let { lines += "File:  $it" }
+    }
+    android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        .setTitle("Stream info")
+        .setMessage(lines.joinToString("\n\n"))
+        .setPositiveButton("Close", null)
+        .show()
 }

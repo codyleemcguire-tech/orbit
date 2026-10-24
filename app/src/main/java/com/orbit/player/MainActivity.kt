@@ -233,7 +233,8 @@ class MainActivity : Activity() {
             addView(root, ViewGroup.LayoutParams(-1, -2))
         }
         playerView = PlayerView(this).apply {
-            useController = true
+            // Orbit's own controls (PlayerControls) replace Media3's.
+            useController = false
             isFocusable = true
             setBackgroundColor(Color.BLACK)
             // Rebuffering mid-video shows a small spinner; the first load has the overlay.
@@ -246,6 +247,8 @@ class MainActivity : Activity() {
         playerFrame = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
             addView(playerView, FrameLayout.LayoutParams(-1, -1))
+            addView(playerControls.view, FrameLayout.LayoutParams(-1, -1))
+            addView(pauseOverlay.view, FrameLayout.LayoutParams(-1, -1))
             addView(playerAction, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
                 rightMargin = Ui.gutter
                 bottomMargin = 170
@@ -790,6 +793,12 @@ class MainActivity : Activity() {
     internal lateinit var loadingSource: TextView
     internal lateinit var loadingStatus: TextView
     internal var loadingRequest = 0
+    // The player's controls and "You're watching" page (PlayerControls.kt), and what TMDB
+    // knows about the playing title (logo, year, description) for them.
+    internal val playerControls by lazy { PlayerControls(this, controlsHost()) }
+    internal val pauseOverlay by lazy { PauseOverlay(this) }
+    internal var playingDetails: TmdbMeta.Details? = null
+    internal val showPauseOverlayLater = Runnable { showPauseOverlay() }
 
     internal var onboarding = false
 
@@ -863,9 +872,12 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         when (currentScreen) {
             "player" -> {
-                // First Back hides the controls, the next one leaves the player.
-                if (playerView.isControllerFullyVisible) playerView.hideController()
-                else leavePlayer()
+                // First Back closes the pause page or hides the controls; the next leaves.
+                when {
+                    pauseOverlay.isShowing -> pauseOverlay.hide()
+                    playerControls.isShowing -> playerControls.hide()
+                    else -> leavePlayer()
+                }
             }
             "actor" -> leaveActor()
             "profiles" -> if (Profiles.chosenThisLaunch) showHomeScreen() else finish()
