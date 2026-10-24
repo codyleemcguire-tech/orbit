@@ -1,0 +1,237 @@
+package com.orbit.player
+
+import android.app.Activity
+import android.os.Bundle
+import android.graphics.Color
+import android.graphics.BitmapFactory
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
+import android.view.View
+import android.widget.Button
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+
+class MainActivity : Activity() {
+    private var player: ExoPlayer? = null
+    private lateinit var root: LinearLayout
+    private lateinit var playerView: PlayerView
+
+    private val bg = Color.rgb(8, 12, 24)
+    private val accent = Color.rgb(90, 125, 255)
+    private val testUrl =
+        "https://storage.googleapis.com/exoplayer-test-media-0/BigBuckBunny_320x180.mp4"
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        window.statusBarColor = bg
+        window.navigationBarColor = bg
+
+        root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(40, 24, 40, 24)
+            setBackground(
+                GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(
+                        Color.rgb(12, 22, 48),
+                        Color.rgb(8, 12, 24),
+                        Color.rgb(18, 14, 42)
+                    )
+                )
+            )
+        }
+
+        val header = TextView(this).apply {
+            text = "O R B I T"
+            textSize = 38f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        }
+        root.addView(header)
+
+        val tagline = TextView(this).apply {
+            text = "YOUR ENTERTAINMENT. YOUR UNIVERSE."
+            textSize = 13f
+            letterSpacing = 0.12f
+            setTextColor(Color.rgb(155, 175, 220))
+            setPadding(0, 8, 0, 48)
+        }
+        root.addView(tagline)
+
+        val eyebrow = TextView(this).apply {
+            text = "WELCOME HOME"
+            textSize = 13f
+            letterSpacing = 0.2f
+            setTextColor(accent)
+        }
+        root.addView(eyebrow)
+
+        val featured = TextView(this).apply {
+            text = "Your next adventure\nstarts here."
+            textSize = 34f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            setPadding(0, 12, 0, 14)
+        }
+        root.addView(featured)
+
+        val description = TextView(this).apply {
+            text = "Discover your personal world of films and shows."
+            textSize = 17f
+            setTextColor(Color.rgb(195, 202, 220))
+            setPadding(0, 0, 0, 32)
+        }
+        root.addView(description)
+
+        val playButton = TextView(this).apply {
+            text = "▶   PLAY TEST VIDEO"
+            textSize = 16f
+            gravity = Gravity.CENTER
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            background = GradientDrawable().apply {
+                setColor(accent)
+                cornerRadius = 12f
+            }
+            setOnClickListener { playTestVideo() }
+        }
+        root.addView(
+            playButton,
+            LinearLayout.LayoutParams(360, 68)
+        )
+
+        val rowTitle = TextView(this).apply {
+            text = "EXPLORE"
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            setPadding(0, 30, 0, 12)
+        }
+        root.addView(rowTitle)
+
+        val posterScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            isFocusable = false
+        }
+
+        val posterRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        val films = listOf(
+            "THE DARK KNIGHT" to "dark_knight.jpg",
+            "INTERSTELLAR" to "interstellar.jpg",
+            "THE MATRIX" to "matrix.jpg",
+            "INCEPTION" to "inception.jpg",
+            "GLADIATOR" to "gladiator.jpg"
+        )
+
+        films.forEach { film ->
+            val poster = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                setPadding(6, 6, 6, 10)
+                background = GradientDrawable().apply {
+                    setColor(bg)
+                    cornerRadius = 12f
+                }
+                isFocusable = true
+                isClickable = true
+                setOnFocusChangeListener { view, focused ->
+                    view.scaleX = if (focused) 1.07f else 1.0f
+                    view.scaleY = if (focused) 1.07f else 1.0f
+                    view.elevation = if (focused) 12f else 0f
+                    view.background = GradientDrawable().apply {
+                        setColor(if (focused) Color.rgb(35, 55, 105) else bg)
+                        cornerRadius = 12f
+                        if (focused) {
+                            setStroke(3, accent)
+                        }
+                    }
+                }
+            }
+
+            val image = ImageView(this).apply {
+                val path = "posters/${film.second}"
+                assets.open(path).use { stream ->
+                    setImageBitmap(BitmapFactory.decodeStream(stream))
+                }
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                contentDescription = film.first
+            }
+
+            poster.addView(
+                image,
+                LinearLayout.LayoutParams(-1, 190)
+            )
+
+            val posterName = TextView(this).apply {
+                text = film.first
+                textSize = 11f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                setPadding(0, 8, 0, 0)
+            }
+
+            poster.addView(posterName)
+            posterRow.addView(
+                poster,
+                LinearLayout.LayoutParams(170, 260).apply {
+                    setMargins(0, 0, 14, 0)
+                }
+            )
+        }
+
+        posterScroll.addView(posterRow)
+        root.addView(posterScroll)
+
+        val footer = TextView(this).apply {
+            text = "ORBIT  •  PERSONAL MEDIA PLAYER  •  V1.0"
+            textSize = 11f
+            letterSpacing = 0.06f
+            setTextColor(Color.rgb(115, 128, 155))
+            setPadding(0, 48, 0, 0)
+        }
+        root.addView(footer)
+
+        playerView = PlayerView(this).apply {
+            useController = true
+            visibility = View.GONE
+        }
+
+        setContentView(root)
+        playButton.requestFocus()
+    }
+
+    private fun playTestVideo() {
+        root.removeAllViews()
+        playerView.visibility = View.VISIBLE
+        root.addView(playerView, LinearLayout.LayoutParams(-1, -1))
+
+        if (player == null) {
+            player = ExoPlayer.Builder(this).build().also {
+                playerView.player = it
+                it.setMediaItem(MediaItem.fromUri(testUrl))
+                it.prepare()
+            }
+        }
+        player?.play()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        player?.release()
+        player = null
+    }
+}

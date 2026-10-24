@@ -1,0 +1,8 @@
+build/
+app/build/
+.gradle/
+.kotlin/
+local.properties
+# TMDB API key
+tmdb.properties
+*.apk

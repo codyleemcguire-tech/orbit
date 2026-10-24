@@ -1,0 +1,44 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+}
+
+def tmdbProperties = new Properties()
+def tmdbFile = rootProject.file("tmdb.properties")
+if (tmdbFile.exists()) {
+    tmdbFile.withInputStream { tmdbProperties.load(it) }
+}
+
+android {
+    buildFeatures {
+        buildConfig true
+    }
+    namespace "com.orbit.player"
+    compileSdk 35
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    defaultConfig {
+        applicationId "com.orbit.player"
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+        buildConfigField "String", "TMDB_API_KEY", "\"${tmdbProperties.getProperty('TMDB_API_KEY', '')}\""
+    }
+}
+
+dependencies {
+    implementation "androidx.media3:media3-exoplayer:1.8.0"
+    implementation "androidx.media3:media3-ui:1.8.0"
+    implementation "androidx.media3:media3-exoplayer-hls:1.8.0"
+    implementation "androidx.recyclerview:recyclerview:1.3.0"
+    implementation "com.google.zxing:core:3.5.3"
+}

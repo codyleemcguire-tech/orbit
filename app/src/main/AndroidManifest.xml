@@ -1,0 +1,32 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Only to read Nuvio's nuvio-collections.json export from Downloads. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <!-- YouTube apps that trailers can open in. -->
+    <queries>
+        <package android:name="io.gh.reisxd.tizentube.cobalt" />
+        <package android:name="com.teamsmart.videomanager.tv" />
+        <package android:name="com.liskovsoft.smarttubetv.beta" />
+        <package android:name="com.liskovsoft.smarttubetv" />
+        <package android:name="com.google.android.youtube.tv" />
+        <package android:name="com.google.android.youtube.googletv" />
+    </queries>
+
+    <application
+        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:label="Orbit"
+        android:banner="@drawable/banner"
+        android:usesCleartextTraffic="false">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

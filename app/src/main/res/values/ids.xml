@@ -1,0 +1,4 @@
+<resources>
+    <item name="tile_width" type="id" />
+    <item name="lazy_load" type="id" />
+</resources>

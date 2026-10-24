@@ -1,0 +1,226 @@
+package com.orbit.player
+
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONObject
+
+object TmdbTest {
+    fun fetchInterstellar(apiKey: String): String {
+        val encodedKey = java.net.URLEncoder.encode(apiKey, "UTF-8")
+        val url = URL(
+            "https://api.themoviedb.org/3/search/movie?query=Interstellar&api_key=$encodedKey"
+        )
+        val connection = url.openConnection() as HttpURLConnection
+
+        return try {
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Accept", "application/json")
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+
+            val status = connection.responseCode
+            val stream = if (status in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream
+            }
+
+            val body = stream.bufferedReader().use { it.readText() }
+
+            if (status !in 200..299) {
+                "TMDB HTTP $status"
+            } else {
+                val results = JSONObject(body).getJSONArray("results")
+                if (results.length() == 0) {
+                    "TMDB connected, but no film results returned."
+                } else {
+                    val film = results.getJSONObject(0)
+                    "TMDB OK: ${film.optString("title")} (${film.optString("release_date")})"
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    data class CastMember(
+        val name: String,
+        val character: String,
+        val profilePath: String?
+    )
+
+    data class FilmMetadata(
+        val title: String,
+        val releaseYear: String,
+        val genres: List<String>,
+        val runtimeMinutes: Int?,
+        val overview: String,
+        val mediaType: String,
+        val tmdbId: Int
+    )
+
+    fun fetchMetadata(title: String, apiKey: String): FilmMetadata? {
+        fun getJson(path: String): JSONObject {
+            val url = URL("https://api.themoviedb.org/3/$path")
+            val connection = url.openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("Accept", "application/json")
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+
+                val status = connection.responseCode
+                val stream = if (status in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+                val body = stream.bufferedReader().use { it.readText() }
+                if (status !in 200..299) {
+                    throw IllegalStateException("TMDB HTTP $status")
+                }
+                return JSONObject(body)
+            } finally {
+                connection.disconnect()
+            }
+        }
+
+        val key = java.net.URLEncoder.encode(apiKey, "UTF-8")
+        val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+        val search = getJson("search/multi?query=$encodedTitle&api_key=$key")
+        val results = search.getJSONArray("results")
+        if (results.length() == 0) return null
+
+        val candidates = (0 until results.length())
+            .map { results.getJSONObject(it) }
+            .filter {
+                it.optString("media_type") == "movie" ||
+                    it.optString("media_type") == "tv"
+            }
+
+        val wantedTitle = title.trim().lowercase()
+        val match = candidates.firstOrNull {
+            it.optString("title").ifBlank { it.optString("name") }
+                .trim().lowercase() == wantedTitle
+        } ?: candidates.firstOrNull {
+            val resultTitle = it.optString("title").ifBlank { it.optString("name") }
+            resultTitle.contains(title, ignoreCase = true) ||
+                title.contains(resultTitle, ignoreCase = true)
+        } ?: return null
+
+        val mediaType = match.optString("media_type")
+        val id = match.getInt("id")
+        val details = getJson("$mediaType/$id?api_key=$key")
+
+        val date = details.optString("release_date").ifBlank {
+            details.optString("first_air_date")
+        }
+        val year = date.takeIf { it.length >= 4 }?.take(4).orEmpty()
+
+        val genresJson = details.optJSONArray("genres")
+        val genres = if (genresJson == null) {
+            emptyList()
+        } else {
+            (0 until genresJson.length()).mapNotNull { i ->
+                genresJson.optJSONObject(i)?.optString("name")
+                    ?.takeIf { it.isNotBlank() }
+            }
+        }
+
+        val runtime = if (mediaType == "movie") {
+            details.optInt("runtime", 0).takeIf { it > 0 }
+        } else {
+            val runtimes = details.optJSONArray("episode_run_time")
+            runtimes?.optInt(0, 0)?.takeIf { it > 0 }
+        }
+
+        return FilmMetadata(
+            title = details.optString("title").ifBlank {
+                details.optString("name", title)
+            },
+            releaseYear = year,
+            genres = genres,
+            runtimeMinutes = runtime,
+            overview = details.optString("overview"),
+            mediaType = mediaType,
+            tmdbId = id
+        )
+    }
+
+    fun fetchCast(title: String, apiKey: String): List<CastMember> {
+        fun getJson(path: String): JSONObject {
+            val url = URL("https://api.themoviedb.org/3/$path")
+            val connection = url.openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("Accept", "application/json")
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+
+                val status = connection.responseCode
+                val stream = if (status in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+                val body = stream.bufferedReader().use { it.readText() }
+                if (status !in 200..299) {
+                    throw IllegalStateException("TMDB HTTP $status")
+                }
+                return JSONObject(body)
+            } finally {
+                connection.disconnect()
+            }
+        }
+
+        val key = java.net.URLEncoder.encode(apiKey, "UTF-8")
+        val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+        val search = getJson("search/multi?query=$encodedTitle&api_key=$key")
+        val results = search.getJSONArray("results")
+        if (results.length() == 0) return emptyList()
+
+        val candidates = (0 until results.length())
+            .map { results.getJSONObject(it) }
+            .filter {
+                it.optString("media_type") == "movie" ||
+                    it.optString("media_type") == "tv"
+            }
+
+        val wantedTitle = title.trim().lowercase()
+
+        val match = candidates.firstOrNull {
+            val resultTitle = (
+                it.optString("title").ifBlank {
+                    it.optString("name")
+                }
+            ).trim().lowercase()
+
+            resultTitle == wantedTitle
+        } ?: candidates.firstOrNull {
+            val resultTitle = (
+                it.optString("title").ifBlank {
+                    it.optString("name")
+                }
+            ).trim().lowercase()
+
+            resultTitle.contains(wantedTitle) ||
+                wantedTitle.contains(resultTitle)
+        } ?: return emptyList()
+
+        val mediaType = match.optString("media_type")
+        val id = match.getInt("id")
+        val credits = getJson("$mediaType/$id/credits?api_key=$key")
+        val cast = credits.getJSONArray("cast")
+
+        return (0 until minOf(cast.length(), 20)).map { i ->
+            val actor = cast.getJSONObject(i)
+            CastMember(
+                name = actor.optString("name"),
+                character = actor.optString("character"),
+                profilePath = actor.optString("profile_path").takeIf {
+                    it.isNotBlank() && it != "null"
+                }
+            )
+        }
+    }
+}
