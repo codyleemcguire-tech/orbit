@@ -190,6 +190,17 @@ internal fun MainActivity.makeDiscoverInfoPanel(): View {
     return panel
 }
 
+// A new list: the panel goes back to its prompt until a poster is highlighted.
+internal fun MainActivity.clearDiscoverInfo() {
+    infoHandler.removeCallbacksAndMessages(null)
+    infoBackdrop.setImageDrawable(null)
+    infoOverline.text = ""
+    infoTitle.text = "Highlight a title"
+    infoChips.removeAllViews()
+    infoGenres.text = ""
+    infoOverview.text = "Move onto a poster to see what it's about."
+}
+
 // Catalogs write runtime as "126 min", "1h55min" or "45"; show it like the rest of Orbit.
 internal fun MainActivity.formatCatalogRuntime(raw: String): String? {
     if (raw.isBlank()) return null
@@ -331,7 +342,9 @@ internal fun MainActivity.loadDiscoverCatalogs() {
     thread {
         // Pick up addons added or removed in Stremio since the last visit.
         val syncNote = syncStremioAddons()
-        val catalogs = StremioAddons.fetchCatalogs()
+        // Orbit's own TMDB catalogs (genres, decades, services, …) first, then the addons'.
+        val own = if (tmdbSettings.enabled && BuildConfig.TMDB_API_KEY.isNotBlank()) OrbitCatalogs.catalogs() else emptyList()
+        val catalogs = own + StremioAddons.fetchCatalogs()
         Handler(Looper.getMainLooper()).post {
             if (request != discoverRequest) return@post
             discoverCatalogs = catalogs
@@ -357,6 +370,7 @@ internal fun MainActivity.fetchDiscoverPage(reset: Boolean) {
     if (reset) {
         discoverRequest++
         discoverResults.clear()
+        clearDiscoverInfo()
         discoverOffset = 0
         discoverStep = 0
         discoverEmptyPages = 0
@@ -424,7 +438,8 @@ internal fun MainActivity.openDiscoverItem(index: Int) {
 internal fun MainActivity.openMeta(meta: StremioAddons.Meta, status: TextView, fromScreen: String) {
     if (meta.type != "series") {
         showFilmDetails(
-            meta.name, meta.poster.orEmpty(), imdbId = meta.id.takeIf { it.startsWith("tt") }
+            meta.name, meta.poster.orEmpty(), imdbId = meta.id.takeIf { it.startsWith("tt") },
+            tmdbId = meta.id.removePrefix("tmdb:").takeIf { meta.id.startsWith("tmdb:") }?.toIntOrNull()
         )
         return
     }

@@ -211,6 +211,7 @@ object StremioAddons {
     }
 
     fun fetchCatalogPage(catalog: Catalog, genre: String?, skip: Int, search: String? = null): Page {
+        if (catalog.baseUrl == OrbitCatalogs.base) return OrbitCatalogs.page(catalog, genre, skip, BuildConfig.TMDB_API_KEY)
         val extras = buildList {
             if (!search.isNullOrBlank()) add("search=${encode(search)}")
             if (!genre.isNullOrBlank()) add("genre=${encode(genre)}")
