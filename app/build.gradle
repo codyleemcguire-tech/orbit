@@ -3,6 +3,13 @@ plugins {
     id "org.jetbrains.kotlin.android"
 }
 
+// Release signing key, kept outside the project (see ~/orbit-keys/README.txt).
+def keystoreProperties = new Properties()
+def keystoreFile = file("${System.getProperty('user.home')}/orbit-keys/keystore.properties")
+if (keystoreFile.exists()) {
+    keystoreFile.withInputStream { keystoreProperties.load(it) }
+}
+
 def tmdbProperties = new Properties()
 def tmdbFile = rootProject.file("tmdb.properties")
 if (tmdbFile.exists()) {
@@ -29,9 +36,37 @@ android {
         applicationId "com.orbit.player"
         minSdk 26
         targetSdk 35
-        versionCode 1
+        versionCode 2
         versionName "1.0"
+        manifestPlaceholders = [appLabel: "Orbit"]
         buildConfigField "String", "TMDB_API_KEY", "\"${tmdbProperties.getProperty('TMDB_API_KEY', '')}\""
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreFile.exists()) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Smaller and faster on the stick: unused code removed and the rest optimised.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            signingConfig signingConfigs.release
+        }
+        debug {
+            // Test builds install alongside the real Orbit instead of replacing it.
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+            manifestPlaceholders = [appLabel: "Orbit (test)"]
+        }
     }
 }
 

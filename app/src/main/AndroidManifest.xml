@@ -19,7 +19,7 @@
 
     <application
         android:theme="@style/Theme.Orbit"
-        android:label="Orbit"
+        android:label="${appLabel}"
         android:banner="@drawable/banner"
         android:usesCleartextTraffic="false">
         <activity

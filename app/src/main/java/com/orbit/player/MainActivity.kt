@@ -244,7 +244,12 @@ class MainActivity : Activity() {
         thread { StremioAddons.loadManifests() }
         // Opening Orbit: splash, then "Who's watching?", then Home. Switching profile
         // (which recreates the activity) goes straight to Home.
-        if (Profiles.chosenThisLaunch) showHomeScreen() else showSplash { showProfilePicker() }
+        // The very first time, a welcome and addon setup take the picker's place.
+        when {
+            Profiles.chosenThisLaunch -> showHomeScreen()
+            Profiles.isFirstRun(this) -> showSplash { showWelcome() }
+            else -> showSplash { showProfilePicker() }
+        }
     }
 
     // The logo fades in, holds a moment, and the page fades into what comes next.
@@ -329,12 +334,25 @@ class MainActivity : Activity() {
     // Accepts what people paste from addon sites: stremio:// links, or a URL without
     // /manifest.json. Returns null when it can't be a manifest URL.
     private fun normalizeManifestUrl(input: String): String? {
-        var url = input.trim()
+        // Pasted text can carry spaces or line breaks from wrapping.
+        var url = input.trim().replace(Regex("\\s+"), "")
         if (url.startsWith("stremio://", ignoreCase = true)) url = "https://" + url.substring(10)
-        if (!url.startsWith("http://") && !url.startsWith("https://")) url = "https://$url"
-        url = url.removeSuffix("/")
+        if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) url = "https://$url"
+        url = url.substringBefore('#').removeSuffix("/")
+        // An addon's configure page (".../configure") rather than its manifest.
+        url = url.removeSuffix("/configure").removeSuffix("/")
         if (!url.endsWith("/manifest.json")) url += "/manifest.json"
-        return url.takeIf { android.util.Patterns.WEB_URL.matcher(it).matches() }
+        // Configured addons (Torrentio, Comet, Debridio, …) put their settings in the path,
+        // with characters such as | that aren't allowed in a URL as typed; escape those.
+        url = url.map { c ->
+            if (c in "|{}^`\\<>\"" || c.code > 126) java.net.URLEncoder.encode(c.toString(), "UTF-8") else c.toString()
+        }.joinToString("")
+        return try {
+            val uri = java.net.URI(url)
+            url.takeIf { uri.scheme in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.host.contains('.') }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun showAddAddon(onDone: (String?) -> Unit) {
@@ -416,6 +434,7 @@ class MainActivity : Activity() {
         pageButton: String = "Add to Orbit",
         handle: (String) -> String = ::addLocalAddon
     ) {
+        val openedOn = currentScreen
         lateinit var status: TextView
         val server = PhoneLinkServer(
             pageHeading ?: "Paste an addon's manifest URL (or stremio:// link). It's added to Orbit on your TV.",
@@ -425,7 +444,7 @@ class MainActivity : Activity() {
             val message = handle(url)
             Handler(Looper.getMainLooper()).post {
                 status.text = message
-                if (currentScreen == "settings") onDone(message)
+                if (currentScreen == openedOn) onDone(message)
             }
             message
         }
@@ -2573,6 +2592,7 @@ class MainActivity : Activity() {
 
     // Email and password are sent to Stremio once; only the returned session key is saved.
     private fun showStremioLogin(onDone: (String?) -> Unit) {
+        val openedOn = currentScreen
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 0)
@@ -2620,7 +2640,7 @@ class MainActivity : Activity() {
                     }
                     Handler(Looper.getMainLooper()).post {
                         resetDiscover()
-                        if (currentScreen == "settings") onDone(message)
+                        if (currentScreen == openedOn) onDone(message)
                     }
                 }
             }
@@ -4812,7 +4832,8 @@ class MainActivity : Activity() {
     }
 
     // A one-line text dialog; onDone gets the text when it isn't blank.
-    private fun promptText(title: String, hint: String, initial: String, numeric: Boolean = false, onDone: (String) -> Unit) {
+    // optional: OK with nothing typed still goes on (with "").
+    private fun promptText(title: String, hint: String, initial: String, numeric: Boolean = false, optional: Boolean = false, onDone: (String) -> Unit) {
         val field = android.widget.EditText(this).apply {
             this.hint = hint
             setText(initial)
@@ -4830,7 +4851,10 @@ class MainActivity : Activity() {
         val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(title)
             .setView(form)
-            .setPositiveButton("OK") { _, _ -> field.text.toString().trim().takeIf { it.isNotEmpty() }?.let(onDone) }
+            .setPositiveButton("OK") { _, _ ->
+                val text = field.text.toString().trim()
+                if (text.isNotEmpty() || optional) onDone(text)
+            }
             .setNegativeButton("Cancel", null)
             .show()
         field.setOnEditorActionListener { _, actionId, _ ->
@@ -4896,7 +4920,7 @@ class MainActivity : Activity() {
     private fun leaveTransfer() {
         transferServer?.stop()
         transferServer = null
-        showSettingsScreen()
+        if (onboarding) showWelcome() else showSettingsScreen()
     }
 
     private fun transferPage(title: String): LinearLayout {
@@ -4975,7 +4999,7 @@ class MainActivity : Activity() {
                 thread {
                     val result = try {
                         val profileJson = ProfileTransfer.fetch(this, host, port, pin)
-                        Profiles.import(this, org.json.JSONObject(profileJson))
+                        Profiles.import(this, org.json.JSONObject(profileJson), into = if (onboarding) profile.id else null)
                     } catch (e: ProfileTransfer.WrongPin) {
                         "That PIN isn't right. Check the other screen and try again."
                     } catch (e: Exception) {
@@ -4988,6 +5012,12 @@ class MainActivity : Activity() {
                             return@post
                         }
                         val received = result as Profiles.Profile
+                        if (onboarding) {
+                            // First run: the received profile is this device's profile now.
+                            Profiles.setOnboarded(this)
+                            switchProfile(received.id)
+                            return@post
+                        }
                         status.text = "✓  Added the profile ${received.name} to this device."
                         status.setTextColor(Ui.textPrimary)
                         list.removeAllViews()
@@ -5191,6 +5221,154 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    // ---- First run: welcome and addon setup ----
+
+    private var onboarding = false
+
+    private fun onboardingPage(): LinearLayout {
+        useContentScroll()
+        root.removeAllViews()
+        root.gravity = Gravity.CENTER
+        contentScroll.scrollTo(0, 0)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }.also { root.addView(it, LinearLayout.LayoutParams(1100, -2).apply { gravity = Gravity.CENTER_HORIZONTAL }) }
+    }
+
+    private fun showWelcome() {
+        onboarding = true
+        currentScreen = "welcome"
+        val page = onboardingPage()
+        page.addView(TextView(this).apply {
+            text = android.text.SpannableString("orbit.").apply {
+                setSpan(android.text.style.ForegroundColorSpan(Ui.accent), 5, 6, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            textSize = 64f
+            typeface = Ui.font("bold")
+            letterSpacing = -0.03f
+            includeFontPadding = false
+            setTextColor(Ui.textPrimary)
+        }, LinearLayout.LayoutParams(-2, -2).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        page.addView(Ui.text(this, Ui.Type.Display, "Welcome to Orbit").apply {
+            gravity = Gravity.CENTER
+            setPadding(0, 48, 0, 18)
+        }, LinearLayout.LayoutParams(-1, -2))
+        page.addView(Ui.text(this, Ui.Type.Body,
+            "Films and shows from your Stremio addons, with My List and Continue watching that follow you " +
+                "between devices. Setting up takes a minute.", Ui.textSecondary).apply {
+            gravity = Gravity.CENTER
+            textSize = 19f
+        }, LinearLayout.LayoutParams(-1, -2))
+        val start = Ui.button(this, "Get started", primary = true) {
+            promptText("What should we call you?", "Your name (optional)", "", optional = true) { name ->
+                if (name.isNotEmpty()) Profiles.rename(this, profile.id, name)
+                showAddonSetup()
+            }
+        }
+        page.addView(start, LinearLayout.LayoutParams(-2, -2).apply { topMargin = 60 })
+        page.addView(Ui.pill(this, "I use Orbit on another device") { showReceiveProfile() },
+            LinearLayout.LayoutParams(-2, -2).apply { topMargin = 24 })
+        start.requestFocus()
+    }
+
+    // Step two: where films, shows and streams come from.
+    private fun showAddonSetup() {
+        currentScreen = "setup"
+        val page = onboardingPage()
+        page.addView(Ui.text(this, Ui.Type.Overline, "STEP 2 OF 2", Ui.accent).apply { gravity = Gravity.CENTER },
+            LinearLayout.LayoutParams(-1, -2))
+        page.addView(Ui.text(this, Ui.Type.Display, "Add your addons").apply {
+            gravity = Gravity.CENTER
+            setPadding(0, 10, 0, 12)
+        }, LinearLayout.LayoutParams(-1, -2))
+        page.addView(Ui.text(this, Ui.Type.Body,
+            "Orbit finds films, shows, streams and subtitles through Stremio addons. Choose one or more; " +
+                "you can change them any time in Settings.", Ui.textSecondary).apply {
+            gravity = Gravity.CENTER
+            textSize = 17f
+            setPadding(0, 0, 0, 26)
+        }, LinearLayout.LayoutParams(-1, -2))
+
+        val status = Ui.text(this, Ui.Type.BodyStrong, "", Ui.textPrimary).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, 10, 0, 0)
+        }
+        fun installed(): String {
+            val names = (if (prefs.contains("stremio_auth_key")) savedAddons() else emptyList()) + localAddons()
+            return if (names.isEmpty()) "No addons yet."
+                else "✓  ${names.size} addon${if (names.size == 1) "" else "s"}: " + names.distinctBy { it.url }.joinToString(", ") { it.name }
+        }
+        val refresh: (String?) -> Unit = { note ->
+            applySavedAddons()
+            status.text = listOfNotNull(note?.takeIf { it.isNotBlank() && !it.endsWith("...") }, installed()).joinToString("\n")
+        }
+
+        // One card per way of adding addons: a heading and a line on what it brings.
+        fun option(title: String, detail: String, onClick: () -> Unit): LinearLayout {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(40, 20, 40, 22)
+                isFocusable = true
+                isClickable = true
+                if (Build.VERSION.SDK_INT >= 26) defaultFocusHighlightEnabled = false
+                val heading = Ui.text(context, Ui.Type.Headline, title).apply { textSize = 22f }
+                val line = Ui.text(context, Ui.Type.Body, detail, Ui.textSecondary)
+                addView(heading)
+                addView(line.apply { setPadding(0, 8, 0, 0) })
+                val paint = { focused: Boolean ->
+                    background = Ui.rounded(if (focused) Ui.surfaceRaised else Ui.surface, 18f,
+                        stroke = if (focused) 4 else 0, strokeColor = Color.WHITE)
+                }
+                paint(false)
+                setOnFocusChangeListener { _, focused -> paint(focused) }
+                setOnClickListener { onClick() }
+            }
+            page.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 14 })
+            return card
+        }
+        val first = option("Sign in to Stremio",
+            "Brings the addons, library and watch progress from your Stremio account.") {
+            showStremioLogin { note ->
+                refresh(note)
+                if (library.signedIn) syncLibrary()
+            }
+        }
+        option("Add from your phone",
+            "Scan a QR code and paste an addon's link on your phone.") { showPhoneLink(refresh) }
+        option("Start with the basics",
+            "Cinemeta for catalogs and OpenSubtitles for subtitles. Add a source of streams yourself.") {
+            status.text = "Adding..."
+            thread {
+                // Only problems are worth a note; the addon list below shows what was added.
+                val problems = starterAddons.map { addLocalAddon(it) }.filter { !it.startsWith("Added") && !it.contains("already") }
+                Handler(Looper.getMainLooper()).post {
+                    if (currentScreen == "setup") refresh(problems.firstOrNull())
+                }
+            }
+        }
+        page.addView(status, LinearLayout.LayoutParams(-1, -2))
+        val finish = Ui.button(this, "Finish", primary = true) {
+            Profiles.setOnboarded(this)
+            onboarding = false
+            Profiles.chosenThisLaunch = true
+            // Opens Home fresh, with the profile's new name in the header.
+            recreate()
+        }
+        page.addView(finish, LinearLayout.LayoutParams(-2, -2).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            topMargin = 22
+        })
+        refresh(null)
+        first.requestFocus()
+    }
+
+    // Catalogs and subtitles from Stremio's own official addons.
+    private val starterAddons = listOf(
+        "https://v3-cinemeta.strem.io/manifest.json",
+        "https://opensubtitles-v3.strem.io/manifest.json"
+    )
+
     private fun playTestVideo() = startPlayback(testUrl, emptyMap())
 
     private fun startPlayback(
@@ -5243,10 +5421,15 @@ class MainActivity : Activity() {
             .also {
                 // Orbit picks the subtitle track itself (see SubtitleSettings.choose), so the
                 // player starts with subtitles off; the preferred audio language goes first.
+                // With Match frame rate on, the sound starts only after the TV has switched
+                // mode (see holdAudioForFrameRate).
+                val holdAudio = playerSettings.matchFrameRate
                 it.trackSelectionParameters = it.trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, holdAudio)
                     .apply { if (subs.audioLanguage.isNotBlank()) setPreferredAudioLanguage(subs.audioLanguage) }
                     .build()
+                if (holdAudio) holdAudioForFrameRate(it, startAtMs)
                 playerView.player = it
                 it.addListener(object : androidx.media3.common.Player.Listener {
                     override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -5291,7 +5474,11 @@ class MainActivity : Activity() {
                     }
 
                     override fun onRenderedFirstFrame() {
-                        hideLoadingOverlay()
+                        if (audioHeldFrom == null) hideLoadingOverlay()
+                    }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        if (isPlaying && audioHeldFrom == null) hideLoadingOverlay()
                     }
 
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
@@ -5586,11 +5773,15 @@ class MainActivity : Activity() {
                 // single gap can't tell 23.976 from 24.
                 val sorted = times.dropLast(1).distinct().sorted()
                 val span = sorted.last() - sorted.first()
-                if (sorted.size < 10 || span <= 0) return@VideoFrameMetadataListener
+                if (sorted.size < 10 || span <= 0) {
+                    Handler(Looper.getMainLooper()).post { if (player === p) releaseAudio(p, 0) }
+                    return@VideoFrameMetadataListener
+                }
                 val fps = FrameRate.snap((sorted.size - 1) * 1_000_000f / span)
                 Handler(Looper.getMainLooper()).post {
                     frameTimer?.let { t -> p.clearVideoFrameMetadataListener(t) }
-                    if (player === p && fps > 0f) matchFrameRate(p, fps)
+                    if (player !== p) return@post
+                    if (fps > 0f) matchFrameRate(p, fps) else releaseAudio(p, 0)
                 }
             }
         }
@@ -5601,14 +5792,52 @@ class MainActivity : Activity() {
     private var frameTimer: androidx.media3.exoplayer.video.VideoFrameMetadataListener? = null
 
     private fun matchFrameRate(p: ExoPlayer, fps: Float) {
-        val display = window.decorView.display ?: return
-        val mode = FrameRate.bestMode(display, fps) ?: return
-        if (mode.modeId == display.mode.modeId) return
+        val display = window.decorView.display
+        val mode = display?.let { FrameRate.bestMode(it, fps) }
+        if (display == null || mode == null || mode.modeId == display.mode.modeId) {
+            releaseAudio(p, 0) // already right (or can't change): start the sound now
+            return
+        }
         if (originalDisplayMode == 0) originalDisplayMode = display.mode.modeId
+        if (audioHeldFrom != null) {
+            loadingStatus.text = "Matching your TV's frame rate..."
+            p.playWhenReady = false
+            window.attributes = window.attributes.apply { preferredDisplayModeId = mode.modeId }
+            releaseAudio(p, 2500)
+            return
+        }
         val wasPlaying = p.playWhenReady
         p.playWhenReady = false
         window.attributes = window.attributes.apply { preferredDisplayModeId = mode.modeId }
         progressHandler.postDelayed({ if (player === p && wasPlaying) p.playWhenReady = true }, 2500)
+    }
+
+    // Where playback started while its sound is held back; null once the sound is on.
+    // The frame rate is often only known from the first frames played, and switching the
+    // TV's mode re-syncs HDMI: with Dolby Atmos (or any bitstream to a receiver) already
+    // playing, that's an audible glitch. So the first moments play silently under the
+    // loading overlay, the TV switches, and playback restarts from the start point with sound.
+    private var audioHeldFrom: Long? = null
+
+    private fun holdAudioForFrameRate(p: ExoPlayer, startAtMs: Long) {
+        audioHeldFrom = startAtMs
+        // Some videos never report frames (or a rate): don't keep the sound off for long.
+        progressHandler.postDelayed({ releaseAudio(p, 0) }, 8000)
+    }
+
+    private fun releaseAudio(p: ExoPlayer, delayMs: Long) {
+        if (player !== p) return // a later video has its own hold
+        val from = audioHeldFrom ?: return
+        audioHeldFrom = null
+        p.playWhenReady = false
+        progressHandler.postDelayed({
+            if (player !== p) return@postDelayed
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .build()
+            p.seekTo(from)
+            p.playWhenReady = true
+        }, delayMs)
     }
 
     private fun restoreDisplayMode() {
@@ -5691,6 +5920,7 @@ class MainActivity : Activity() {
     }
 
     private fun leavePlayer() {
+        audioHeldFrom = null
         hideLoadingOverlay(animate = false)
         progressHandler.removeCallbacks(progressTicker)
         stopPlayerExtras()
@@ -5813,6 +6043,8 @@ class MainActivity : Activity() {
             }
             "actor" -> leaveActor()
             "profiles" -> if (Profiles.chosenThisLaunch) showHomeScreen() else finish()
+            "welcome" -> finish()
+            "setup" -> showWelcome()
             "splash" -> finish()
             "transfer" -> leaveTransfer()
             "streams" -> leaveStreams()

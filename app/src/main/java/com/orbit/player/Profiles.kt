@@ -58,6 +58,21 @@ object Profiles {
         store(context).edit().putString("active", id).commit()
     }
 
+    // First time Orbit is opened: no profiles saved and nothing in the first one yet.
+    // Anyone updating from an earlier Orbit already has data, so skips the welcome.
+    fun isFirstRun(context: Context): Boolean {
+        val s = store(context)
+        if (s.getBoolean("onboarded", false)) return false
+        val used = s.contains("profiles") || prefs(context, mainId).all.isNotEmpty() ||
+            context.getSharedPreferences(progressName(mainId), Context.MODE_PRIVATE).all.isNotEmpty()
+        if (used) setOnboarded(context)
+        return !used
+    }
+
+    fun setOnboarded(context: Context) {
+        store(context).edit().putBoolean("onboarded", true).commit()
+    }
+
     fun prefs(context: Context, id: String): SharedPreferences =
         context.getSharedPreferences(prefsName(id), Context.MODE_PRIVATE)
 
@@ -108,10 +123,13 @@ object Profiles {
             .put("progress", dump(context.getSharedPreferences(progressName(id), Context.MODE_PRIVATE)))
     }
 
-    // Adds a received profile as a new one on this device and returns it.
-    fun import(context: Context, data: JSONObject): Profile {
+    // Adds a received profile as a new one on this device and returns it; with into, it
+    // replaces that profile's contents instead (a new device's empty first profile).
+    fun import(context: Context, data: JSONObject, into: String? = null): Profile {
         require(data.optInt("orbitProfile") == 1) { "Not an Orbit profile" }
-        val profile = add(context, data.optString("name", "Profile"))
+        val profile = into?.let { id -> list(context).firstOrNull { it.id == id } }
+            ?.also { rename(context, it.id, data.optString("name", it.name)) }
+            ?: add(context, data.optString("name", "Profile"))
         load(context.getSharedPreferences(prefsName(profile.id), Context.MODE_PRIVATE), data.optJSONObject("prefs"))
         load(context.getSharedPreferences(progressName(profile.id), Context.MODE_PRIVATE), data.optJSONObject("progress"))
         val color = data.optInt("color", profile.color)
