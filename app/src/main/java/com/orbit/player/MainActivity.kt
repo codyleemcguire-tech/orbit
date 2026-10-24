@@ -219,6 +219,8 @@ class MainActivity : Activity() {
             useController = true
             isFocusable = true
             setBackgroundColor(Color.BLACK)
+            // Rebuffering mid-video shows a small spinner; the first load has the overlay.
+            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
         }
         playerAction = Ui.button(this, "", primary = true) { playerActionRun?.invoke() }.apply {
             isFocusable = false // pressed with OK via handlePlayerKey, not by moving focus
@@ -231,6 +233,7 @@ class MainActivity : Activity() {
                 rightMargin = Ui.gutter
                 bottomMargin = 170
             })
+            addView(buildLoadingOverlay(), FrameLayout.LayoutParams(-1, -1))
         }
 
         applySavedAddons()
@@ -3835,7 +3838,10 @@ class MainActivity : Activity() {
             Handler(Looper.getMainLooper()).post {
                 button.text = "▶  Trailer"
                 if (currentScreen != screen || lastFilmTitle != title) return@post
-                if (url != null) startPlayback(url, emptyMap()) else openTrailer(youtubeKey)
+                if (url != null) {
+                    playingStream = null
+                    startPlayback(url, emptyMap())
+                } else openTrailer(youtubeKey)
             }
         }
     }
@@ -4897,6 +4903,161 @@ class MainActivity : Activity() {
         search()
     }
 
+    // ---- Loading overlay: covers the player until the first frame is on screen ----
+
+    private lateinit var loadingOverlay: FrameLayout
+    private lateinit var loadingBackdrop: ImageView
+    private lateinit var loadingLogo: ImageView
+    private lateinit var loadingTitle: TextView
+    private lateinit var loadingSubtitle: TextView
+    private lateinit var loadingSource: TextView
+    private lateinit var loadingStatus: TextView
+    private var loadingRequest = 0
+
+    private fun buildLoadingOverlay(): FrameLayout {
+        loadingBackdrop = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            alpha = 0f
+        }
+        // Darkens the backdrop, most of all where the text sits.
+        val scrim = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,
+                intArrayOf(Color.argb(250, 9, 11, 16), Color.argb(200, 9, 11, 16), Color.argb(150, 9, 11, 16))
+            )
+        }
+        loadingLogo = ImageView(this).apply {
+            adjustViewBounds = true
+            maxWidth = 760
+            maxHeight = 220
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            visibility = View.GONE
+        }
+        loadingTitle = Ui.text(this, Ui.Type.Display, "", maxLines = 2).apply { gravity = Gravity.CENTER }
+        loadingSubtitle = Ui.text(this, Ui.Type.BodyStrong, "", Ui.textSecondary, maxLines = 1).apply {
+            gravity = Gravity.CENTER
+            textSize = 20f
+            setPadding(0, 22, 0, 0)
+        }
+        val spinner = android.widget.ProgressBar(this).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(Ui.accent)
+        }
+        loadingStatus = Ui.text(this, Ui.Type.BodyStrong, "", Ui.textPrimary, maxLines = 1).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, 22, 0, 0)
+        }
+        loadingSource = Ui.text(this, Ui.Type.Label, "", Ui.textMuted, maxLines = 1).apply {
+            gravity = Gravity.CENTER
+            setPadding(120, 10, 120, 0)
+            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+        }
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(loadingLogo, LinearLayout.LayoutParams(-2, -2))
+            addView(loadingTitle, LinearLayout.LayoutParams(-1, -2))
+            addView(loadingSubtitle, LinearLayout.LayoutParams(-1, -2))
+            addView(spinner, LinearLayout.LayoutParams(84, 84).apply { topMargin = 70 })
+            addView(loadingStatus, LinearLayout.LayoutParams(-1, -2))
+            addView(loadingSource, LinearLayout.LayoutParams(-1, -2))
+        }
+        val hint = Ui.text(this, Ui.Type.Caption, "Press Back to cancel", Ui.textMuted).apply { gravity = Gravity.CENTER }
+        loadingOverlay = FrameLayout(this).apply {
+            setBackgroundColor(Ui.background)
+            visibility = View.GONE
+            isClickable = true // nothing behind it reacts while it's up
+            addView(loadingBackdrop, FrameLayout.LayoutParams(-1, -1))
+            addView(scrim, FrameLayout.LayoutParams(-1, -1))
+            addView(column, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER).apply { leftMargin = Ui.gutter; rightMargin = Ui.gutter })
+            addView(hint, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply { bottomMargin = 56 })
+        }
+        return loadingOverlay
+    }
+
+    private fun showLoadingOverlay(watchId: String?, target: WatchTarget?) {
+        val request = ++loadingRequest
+        val trailer = target == null
+        val title = target?.title ?: lastFilmTitle
+        loadingTitle.text = title
+        loadingTitle.visibility = View.VISIBLE
+        loadingLogo.visibility = View.GONE
+        loadingLogo.setImageDrawable(null)
+        loadingBackdrop.animate().cancel()
+        loadingBackdrop.alpha = 0f
+        loadingBackdrop.setImageDrawable(null)
+        loadingSubtitle.text = when {
+            trailer -> "Trailer"
+            target!!.episodeLabel.isNotBlank() -> target.episodeLabel
+            else -> ""
+        }
+        loadingSubtitle.visibility = if (loadingSubtitle.text.isEmpty()) View.GONE else View.VISIBLE
+        loadingStatus.text = if (trailer) "Loading trailer..." else "Loading stream..."
+        // Which stream: its addon and the quality/size details addons put in the name.
+        loadingSource.text = playingStream?.let { st ->
+            val badges = Ui.streamBadges("${st.name} ${st.description}").joinToString("  ·  ") { it.first }
+            listOf(st.addonName, badges).filter { it.isNotBlank() }.joinToString("  ·  ")
+        }.orEmpty()
+        loadingSource.visibility = if (loadingSource.text.isEmpty()) View.GONE else View.VISIBLE
+        playerView.useController = false
+        loadingOverlay.animate().cancel()
+        loadingOverlay.alpha = 1f
+        loadingOverlay.visibility = View.VISIBLE
+        // Reassurance when a big file takes a while to start.
+        loadingOverlay.postDelayed({
+            if (request == loadingRequest && loadingOverlay.visibility == View.VISIBLE)
+                loadingStatus.text = "Still loading — large files can take a moment..."
+        }, 9000)
+
+        // Backdrop and title logo from TMDB, found by the video's IMDb id (or the show/film page).
+        if (!tmdbSettings.enabled) return
+        val key = BuildConfig.TMDB_API_KEY
+        val tvId = target?.tvId?.takeIf { it > 0 } ?: if (trailer && detailsTypeIsTv()) lastTvId else null
+        val tmdbId = if (trailer && !detailsTypeIsTv()) lastFilmTmdbId else null
+        thread {
+            val details = try {
+                when {
+                    tvId != null -> TmdbMeta.details("tv", tvId, key)
+                    tmdbId != null -> TmdbMeta.details("movie", tmdbId, key)
+                    watchId != null && watchId.startsWith("tt") ->
+                        TmdbMeta.resolve(watchId.substringBefore(':'), target?.type ?: "movie", key)
+                            ?.let { (t, id) -> TmdbMeta.details(t, id, key) }
+                    else -> tmdbDetailsFor("movie", title, null, lastFilmImdbId)
+                }
+            } catch (_: Exception) {
+                null
+            }
+            Handler(Looper.getMainLooper()).post {
+                if (request != loadingRequest || loadingOverlay.visibility != View.VISIBLE || details == null) return@post
+                details.metadata.backdropPath?.let { path ->
+                    loadPosterImage(loadingBackdrop, path, "w1280", targetWidth = 1280)
+                    loadingBackdrop.animate().alpha(1f).setDuration(400).start()
+                }
+                if (tmdbSettings.logos) details.logoPath?.let { path ->
+                    showLogo(loadingLogo, path) {
+                        if (request == loadingRequest) loadingTitle.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
+    private fun detailsTypeIsTv() = playerReturnScreen == "tv_details"
+
+    private fun hideLoadingOverlay(animate: Boolean = true) {
+        loadingRequest++
+        playerView.useController = true
+        if (loadingOverlay.visibility != View.VISIBLE) return
+        if (!animate) {
+            loadingOverlay.visibility = View.GONE
+            return
+        }
+        loadingOverlay.animate().alpha(0f).setDuration(350).withEndAction {
+            loadingOverlay.visibility = View.GONE
+            loadingOverlay.alpha = 1f
+        }.start()
+    }
+
     private fun playTestVideo() = startPlayback(testUrl, emptyMap())
 
     private fun startPlayback(
@@ -4919,6 +5080,7 @@ class MainActivity : Activity() {
         stopDiscoverFocusWatcher()
         setContentView(playerFrame)
         playerView.requestFocus()
+        showLoadingOverlay(watchId, target)
         startPlayerExtras(watchId, target)
 
         player?.release()
@@ -4993,6 +5155,10 @@ class MainActivity : Activity() {
                         if (state != androidx.media3.common.Player.STATE_ENDED) return
                         saveProgress(finished = true)
                         if (playerSettings.autoplayNext) nextEpisode?.let { playNextEpisode(it) }
+                    }
+
+                    override fun onRenderedFirstFrame() {
+                        hideLoadingOverlay()
                     }
 
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
@@ -5392,6 +5558,7 @@ class MainActivity : Activity() {
     }
 
     private fun leavePlayer() {
+        hideLoadingOverlay(animate = false)
         progressHandler.removeCallbacks(progressTicker)
         stopPlayerExtras()
         saveProgress()
