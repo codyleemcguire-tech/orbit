@@ -139,7 +139,8 @@ object TmdbTest {
     data class CastMember(
         val name: String,
         val character: String,
-        val profilePath: String?
+        val profilePath: String?,
+        val id: Int = 0 // TMDB person id, 0 when unknown
     )
 
     data class FilmMetadata(
@@ -320,7 +321,8 @@ object TmdbTest {
                 character = actor.optString("character"),
                 profilePath = actor.optString("profile_path").takeIf {
                     it.isNotBlank() && it != "null"
-                }
+                },
+                id = actor.optInt("id")
             )
         }
     }

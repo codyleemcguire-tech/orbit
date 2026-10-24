@@ -97,13 +97,13 @@ object TmdbMeta {
             (0 until minOf(arr.length(), 20)).map { arr.getJSONObject(it) }.map {
                 TmdbTest.CastMember(it.optString("name"),
                     it.optJSONArray("roles")?.optJSONObject(0)?.optString("character").orEmpty(),
-                    it.optString("profile_path").takeIf { p -> p.startsWith("/") })
+                    it.optString("profile_path").takeIf { p -> p.startsWith("/") }, it.optInt("id"))
             }
         }?.takeIf { it.isNotEmpty() }
         val cast = showCast ?: credits?.optJSONArray("cast")?.let { arr ->
             (0 until minOf(arr.length(), 20)).map { arr.getJSONObject(it) }.map {
                 TmdbTest.CastMember(it.optString("name"), it.optString("character"),
-                    it.optString("profile_path").takeIf { p -> p.startsWith("/") })
+                    it.optString("profile_path").takeIf { p -> p.startsWith("/") }, it.optInt("id"))
             }
         }.orEmpty()
         val director = credits?.optJSONArray("crew")?.let { arr ->
@@ -144,6 +144,69 @@ object TmdbMeta {
             ?: videos.firstOrNull { it.optString("name").contains("trailer", true) })?.optString("key")
         return Details(mediaType, tmdbId, imdb, metadata, logo, status, studios, director, cast, recs, trailer)
             .also { cache[cacheKey] = it }
+    }
+
+    data class Person(
+        val id: Int,
+        val name: String,
+        val biography: String,
+        val born: String, // "Born 27 August 1979 · Emporia, Kansas, USA", or ""
+        val profilePath: String?,
+        val movies: List<TmdbTest.CatalogueItem>,
+        val shows: List<TmdbTest.CatalogueItem>
+    )
+
+    private val people = ConcurrentHashMap<Int, Person>()
+
+    // An actor and everything they've acted in, by person id (or by name when it's unknown).
+    fun person(id: Int, name: String, key: String): Person? {
+        people[id]?.let { return it }
+        val personId = id.takeIf { it > 0 } ?: run {
+            val results = get("search/person?query=${URLEncoder.encode(name, "UTF-8")}", key).optJSONArray("results") ?: return null
+            val all = (0 until results.length()).map { results.getJSONObject(it) }
+            (all.firstOrNull { it.optString("name").equals(name, true) } ?: all.firstOrNull())?.optInt("id") ?: return null
+        }
+        people[personId]?.let { return it }
+        val d = get("person/$personId?append_to_response=combined_credits", key)
+        // Acting roles only: no talk, news or reality shows, and no appearances as themselves.
+        val skipGenres = setOf(10763, 10764, 10767)
+        val credits = d.optJSONObject("combined_credits")?.optJSONArray("cast")?.let { arr ->
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }.orEmpty().filter { c ->
+            val genres = c.optJSONArray("genre_ids")?.let { g -> (0 until g.length()).map { g.optInt(it) } }.orEmpty()
+            val character = c.optString("character")
+            c.optString("poster_path").startsWith("/") && genres.none { it in skipGenres } &&
+                !Regex("\\b(self|himself|herself|themselves)\\b", RegexOption.IGNORE_CASE).containsMatchIn(character)
+        }
+        // Best known first (most votes), each title once.
+        fun items(type: String) = credits.filter { it.optString("media_type") == type }
+            .distinctBy { it.optInt("id") }
+            .sortedByDescending { it.optInt("vote_count") }
+            .take(40)
+            .map { r ->
+                TmdbTest.CatalogueItem(
+                    id = r.optInt("id"),
+                    title = r.optString("title").ifBlank { r.optString("name") },
+                    overview = r.optString("overview"),
+                    posterPath = r.optString("poster_path"),
+                    mediaType = type,
+                    releaseYear = r.optString("release_date").ifBlank { r.optString("first_air_date") }.take(4),
+                    backdropPath = r.optString("backdrop_path").takeIf { it.startsWith("/") },
+                    rating = r.optDouble("vote_average", 0.0)
+                )
+            }
+        val birthday = d.optString("birthday").takeIf { it.length == 10 }?.let {
+            try {
+                java.time.LocalDate.parse(it).format(java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.ENGLISH))
+            } catch (_: Exception) {
+                it
+            }
+        }
+        val born = listOfNotNull(birthday?.let { "Born $it" }, d.optString("place_of_birth").ifBlank { null }?.trim())
+            .joinToString("  ·  ")
+        return Person(personId, d.optString("name").ifBlank { name }, d.optString("biography"), born,
+            d.optString("profile_path").takeIf { it.startsWith("/") }, items("movie"), items("tv"))
+            .also { people[personId] = it; if (id > 0) people[id] = it }
     }
 
     private fun names(arr: JSONArray?): List<String> =

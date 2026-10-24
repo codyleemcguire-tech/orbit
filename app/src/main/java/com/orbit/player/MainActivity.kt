@@ -65,9 +65,6 @@ class MainActivity : Activity() {
     private var cachedShows: List<TmdbTest.CatalogueItem>? = null
 
     private val seasonByShow = mutableMapOf<Int, Int>()
-    private var castFocusIndex = -1
-    // Whether the open actor page was reached from a show page (else a film page).
-    private var actorFromShow = false
     private var episodeFocusIndex = -1
     private var swallowKeyUp = -1
 
@@ -1025,6 +1022,7 @@ class MainActivity : Activity() {
     private fun showHomeScreen() {
         currentScreen = "home"
         detailsReturnScreen = "home"
+        actorPages.clear()
         val kept = homeFrame
         if (!homeDirty && kept != null) {
             stopDiscoverFocusWatcher()
@@ -1495,6 +1493,7 @@ class MainActivity : Activity() {
         val returning = openFolder?.let { "${it.first.id}/${it.second.id}" } == key && folderFocusIndex >= 0
         currentScreen = "collection"
         detailsReturnScreen = "collection"
+        actorPages.clear()
         openFolder = collection to folder
         if (!returning) {
             folderTab = -1
@@ -2046,6 +2045,7 @@ class MainActivity : Activity() {
         "discover" -> "‹   Discover"
         "search" -> "‹   Search"
         "collection" -> "‹   ${openFolder?.second?.title ?: "Collection"}"
+        "actor" -> "‹   ${actorPages.lastOrNull()?.name ?: "Back"}"
         else -> "‹   Home"
     }
 
@@ -2054,6 +2054,7 @@ class MainActivity : Activity() {
             "discover" -> showDiscoverScreen()
             "search" -> showSearchScreen()
             "collection" -> openFolder?.let { showFolderScreen(it.first, it.second) } ?: showHomeScreen()
+            "actor" -> actorPages.lastOrNull()?.let { showActorProfile(it) } ?: showHomeScreen()
             else -> showHomeScreen()
         }
     }
@@ -2484,6 +2485,7 @@ class MainActivity : Activity() {
     private fun showDiscoverScreen() {
         currentScreen = "discover"
         detailsReturnScreen = "discover"
+        actorPages.clear()
 
         // Everything above the posters becomes the grid's first, full-width row,
         // so it scrolls away with the grid as before.
@@ -3000,6 +3002,7 @@ class MainActivity : Activity() {
         useContentScroll()
         currentScreen = "search"
         detailsReturnScreen = "search"
+        actorPages.clear()
         root.removeAllViews()
         root.gravity = Gravity.TOP
         contentScroll.scrollTo(0, 0)
@@ -4363,9 +4366,7 @@ class MainActivity : Activity() {
                             name.setTextColor(if (focused) Color.WHITE else Ui.textPrimary)
                         }
                         setOnClickListener {
-                            castFocusIndex = index
-                            actorFromShow = screen == "tv_details"
-                            showActorProfile(member.name, member.profilePath, title)
+                            openActor(member, index, fromShow = screen == "tv_details")
                         }
                     }
                     castRow.addView(card, LinearLayout.LayoutParams(180, -2).apply { rightMargin = 22 })
@@ -4383,19 +4384,50 @@ class MainActivity : Activity() {
         return castRow
     }
 
-    private fun leaveActor() {
-        if (actorFromShow) showTvDetails(lastTvId, lastFilmTitle, lastPosterFile, castFocusIndex)
-        else showFilmDetails(lastFilmTitle, lastPosterFile, castFocusIndex)
+    // Actor pages opened so far, newest last, so Back retraces show → actor → film → actor.
+    // Each remembers the page it was opened from and where Back from that page led.
+    private data class ActorPage(
+        val name: String,
+        val personId: Int,
+        val profilePath: String?,
+        val fromTitle: String,
+        val fromPoster: String,
+        val fromShow: Boolean,
+        val fromTvId: Int,
+        val fromTmdbId: Int?,
+        val fromImdbId: String?,
+        val castIndex: Int,
+        val previousReturn: String,
+        var focusRow: Int = -1,
+        var focusIndex: Int = -1
+    )
+    private val actorPages = ArrayDeque<ActorPage>()
+
+    private fun openActor(member: TmdbTest.CastMember, index: Int, fromShow: Boolean) {
+        val page = ActorPage(
+            member.name, member.id, member.profilePath, lastFilmTitle, lastPosterFile, fromShow, lastTvId,
+            lastFilmTmdbId, lastFilmImdbId, index, detailsReturnScreen
+        )
+        actorPages.addLast(page)
+        showActorProfile(page)
     }
 
-    private fun showActorProfile(actorName: String, profilePath: String?, filmTitle: String) {
+    private fun leaveActor() {
+        val page = actorPages.removeLastOrNull() ?: return showHomeScreen()
+        detailsReturnScreen = page.previousReturn
+        if (page.fromShow) showTvDetails(page.fromTvId, page.fromTitle, page.fromPoster, page.castIndex)
+        else showFilmDetails(page.fromTitle, page.fromPoster, page.castIndex, page.fromImdbId, page.fromTmdbId)
+    }
+
+    private fun showActorProfile(page: ActorPage) {
         useContentScroll()
         currentScreen = "actor"
         root.removeAllViews()
+        root.gravity = Gravity.TOP
         contentScroll.scrollTo(0, 0)
 
         val backButton = TextView(this).apply {
-            text = "‹   $filmTitle"
+            text = "‹   ${page.fromTitle}"
             isFocusable = true
             isClickable = true
             setOnClickListener { leaveActor() }
@@ -4403,7 +4435,7 @@ class MainActivity : Activity() {
         styleLinkFocus(backButton)
         root.addView(backButton, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = -22 })
 
-        // Portrait on the left; name, biography and filmography beside it.
+        // Portrait on the left; name, birth and biography beside it; their films and shows below.
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 36, 0, 0)
@@ -4411,56 +4443,73 @@ class MainActivity : Activity() {
         root.addView(layout)
         val portrait = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            contentDescription = actorName
+            contentDescription = page.name
             background = Ui.rounded(Ui.surface, 20f)
             clipToOutline = true
         }
-        layout.addView(portrait, LinearLayout.LayoutParams(340, 510))
+        layout.addView(portrait, LinearLayout.LayoutParams(260, 390))
 
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(64, 0, 0, 0)
+            setPadding(56, 0, 0, 0)
         }
         layout.addView(column, LinearLayout.LayoutParams(0, -2, 1f))
-        column.addView(Ui.text(this, Ui.Type.Overline, "CAST  ·  $filmTitle".uppercase(), Ui.accent, maxLines = 1))
-        column.addView(Ui.text(this, Ui.Type.Display, actorName, maxLines = 2).apply { setPadding(0, 12, 0, 22) })
-        val biography = Ui.text(this, Ui.Type.Body, "Loading biography...", Ui.textSecondary, maxLines = 10)
+        column.addView(Ui.text(this, Ui.Type.Overline, "CAST  ·  ${page.fromTitle}".uppercase(), Ui.accent, maxLines = 1))
+        column.addView(Ui.text(this, Ui.Type.Display, page.name, maxLines = 2).apply { setPadding(0, 12, 0, 10) })
+        val born = Ui.text(this, Ui.Type.Label, "", Ui.textMuted, maxLines = 1).apply {
+            setPadding(0, 0, 0, 18)
+            visibility = View.GONE
+        }
+        column.addView(born)
+        val biography = Ui.text(this, Ui.Type.Body, "Loading...", Ui.textSecondary, maxLines = 7)
         column.addView(biography)
-        column.addView(Ui.sectionTitle(this, "Known for"))
-        val filmography = Ui.text(this, Ui.Type.Body, "Loading filmography...", Ui.textSecondary).apply {
-            setPadding(0, 14, 0, 0)
-            setLineSpacing(10f, 1f)
-        }
-        column.addView(filmography)
 
-        if (!profilePath.isNullOrBlank()) {
-            thread {
-                try {
-                    val bitmap = BitmapFactory.decodeStream(
-                        URL("https://image.tmdb.org/t/p/w500$profilePath").openStream()
-                    )
-                    Handler(Looper.getMainLooper()).post {
-                        if (currentScreen == "actor") portrait.setImageBitmap(bitmap)
-                    }
-                } catch (_: Exception) {}
-            }
-        }
+        page.profilePath?.let { loadPosterImage(portrait, it, "w342", targetWidth = 260, cornerRadius = 20f) }
 
         thread {
-            try {
-                val details = TmdbTest.fetchActorProfile(actorName, BuildConfig.TMDB_API_KEY)
-                Handler(Looper.getMainLooper()).post {
-                    if (currentScreen != "actor") return@post
-                    biography.text = details.first.ifBlank { "No biography is available." }
-                    filmography.text = details.second.ifBlank { "No filmography is available." }
-                }
+            val person = try {
+                TmdbMeta.person(page.personId, page.name, BuildConfig.TMDB_API_KEY)
             } catch (_: Exception) {
-                Handler(Looper.getMainLooper()).post {
-                    if (currentScreen == "actor") {
-                        biography.text = "Biography unavailable."
-                        filmography.text = "Filmography unavailable."
+                null
+            }
+            Handler(Looper.getMainLooper()).post {
+                if (currentScreen != "actor" || actorPages.lastOrNull() !== page) return@post
+                if (person == null) {
+                    biography.text = "Details for ${page.name} aren't available."
+                    return@post
+                }
+                if (page.profilePath == null) person.profilePath?.let {
+                    loadPosterImage(portrait, it, "w342", targetWidth = 260, cornerRadius = 20f)
+                }
+                if (person.born.isNotBlank()) {
+                    born.text = person.born
+                    born.visibility = View.VISIBLE
+                }
+                biography.text = person.biography.ifBlank { "No biography is available." }
+                // One poster row each for films and shows; a title opens its own page.
+                val rows = listOf("Movies" to person.movies, "TV shows" to person.shows).filter { it.second.isNotEmpty() }
+                rows.forEachIndexed { rowIndex, (heading, items) ->
+                    root.addView(Ui.sectionTitle(this, "$heading  ·  ${items.size}"))
+                    val (scroll, row) = makePosterRow()
+                    items.forEachIndexed { index, item ->
+                        row.addView(makePosterCard(item.title, item.releaseYear, item.posterPath, dimRow = false) {
+                            page.focusRow = rowIndex
+                            page.focusIndex = index
+                            detailsReturnScreen = "actor"
+                            if (item.mediaType == "tv") showTvDetails(item.id, item.title, item.posterPath.orEmpty())
+                            else showFilmDetails(item.title, item.posterPath.orEmpty(), tmdbId = item.id)
+                        }, LinearLayout.LayoutParams(190, -2).apply { setMargins(0, 0, 26, 0) })
+                    }
+                    pinRowEnds(row)
+                    addPosterRow(scroll)
+                    if (rowIndex == page.focusRow) row.getChildAt(page.focusIndex)?.let { card ->
+                        card.requestFocus()
+                        scroll.post { scroll.scrollTo((card.left - Ui.gutter).coerceAtLeast(0), 0) }
                     }
                 }
+                if (rows.isEmpty()) root.addView(Ui.text(this, Ui.Type.Body, "No films or shows found.", Ui.textMuted).apply {
+                    setPadding(0, 40, 0, 0)
+                })
             }
         }
         backButton.requestFocus()
