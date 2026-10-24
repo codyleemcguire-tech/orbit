@@ -21,6 +21,7 @@
         android:theme="@style/Theme.Orbit"
         android:label="${appLabel}"
         android:banner="@drawable/banner"
+        android:largeHeap="true"
         android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"

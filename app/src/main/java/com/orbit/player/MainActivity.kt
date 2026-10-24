@@ -107,13 +107,19 @@ class MainActivity : Activity() {
     private var activeAddonTrack: AddonSubtitleTrack? = null
     private var subtitleDelayMs = 0L
     private val loadedAddonTracks = mutableMapOf<String, AddonSubtitleTrack>()
+    private var shownAddonLines: List<String>? = null
     private val addonSubtitleTicker = object : Runnable {
         override fun run() {
             val track = activeAddonTrack ?: return
             val p = player ?: return
             val lines = track.at(p.currentPosition - subtitleDelayMs)
-            val cues = lines.map { androidx.media3.common.text.Cue.Builder().setText(it).build() }
-            playerView.subtitleView?.setCues(subtitleSettings.filterCues(cues))
+            // Redrawn only when the lines change: setting cues ten times a second made the
+            // subtitle view lay itself out over and over while the video played.
+            if (lines != shownAddonLines) {
+                shownAddonLines = lines
+                val cues = lines.map { androidx.media3.common.text.Cue.Builder().setText(it).build() }
+                playerView.subtitleView?.setCues(subtitleSettings.filterCues(cues))
+            }
             progressHandler.postDelayed(this, 100)
         }
     }
@@ -5404,6 +5410,17 @@ class MainActivity : Activity() {
         val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(this)
             // Try other decoders when the preferred one can't handle a stream.
             .setEnableDecoderFallback(true)
+        // A longer buffer than Media3's default, so a slow patch on the file host doesn't stop
+        // playback; capped by memory, since 4K remuxes fill a buffer quickly.
+        val bufferBytes = (Runtime.getRuntime().maxMemory() / 3)
+            .coerceIn(48L * 1024 * 1024, 200L * 1024 * 1024).toInt()
+        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(30_000, 120_000, 2_500, 5_000)
+            .setTargetBufferBytes(bufferBytes)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .build()
+        reconnects = 0
+        lastReconnectAt = 0L
         val subs = subtitleSettings
         subs.applyStyle(playerView.subtitleView)
         // The control bar's CC button opens Orbit's subtitle menu rather than Media3's own.
@@ -5416,7 +5433,11 @@ class MainActivity : Activity() {
             .setMediaSourceFactory(
                 androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
                     .setDataSourceFactory(http)
+                    // Keep trying a dropped connection for a while before giving up.
+                    .setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(8))
             )
+            .setLoadControl(loadControl)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
             .also {
                 // Orbit picks the subtitle track itself (see SubtitleSettings.choose), so the
@@ -5453,11 +5474,16 @@ class MainActivity : Activity() {
 
                     // Runs after PlayerView's own listener, so the cleaned cues are what show.
                     override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
-                        if (activeAddonTrack != null) return
+                        // The player cleared the view (a seek): the addon lines go back next tick.
+                        if (activeAddonTrack != null) {
+                            shownAddonLines = null
+                            return
+                        }
                         if (subs.stripSdh) playerView.subtitleView?.setCues(subs.filterCues(cueGroup.cues))
                     }
 
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        if (reconnect(it, error)) return
                         // The message shows on the streams screen; elsewhere (trailers, …) a toast instead.
                         if (playerReturnScreen == "streams") playbackError = "Couldn't play that stream (${error.errorCodeName}). " +
                             "Try another one, or hold OK on it to open it in another app."
@@ -5469,6 +5495,12 @@ class MainActivity : Activity() {
 
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state != androidx.media3.common.Player.STATE_ENDED) return
+                        // A host that closes the connection early can look like the end of
+                        // the file: pick up where it stopped rather than finishing the episode.
+                        val duration = it.duration
+                        val position = it.currentPosition
+                        if (playingTarget != null && duration > 0 && position < duration - 120_000 &&
+                            position < duration * 9 / 10 && reconnect(it, null)) return
                         saveProgress(finished = true)
                         if (playerSettings.autoplayNext) nextEpisode?.let { playNextEpisode(it) }
                     }
@@ -5478,6 +5510,9 @@ class MainActivity : Activity() {
                     }
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        // Without this the TV's screensaver (and then sleep) starts part way
+                        // through a film, which stops Orbit and closes the player.
+                        playerView.keepScreenOn = isPlaying
                         if (isPlaying && audioHeldFrom == null) hideLoadingOverlay()
                     }
 
@@ -5501,6 +5536,34 @@ class MainActivity : Activity() {
                 it.prepare()
                 it.play()
             }
+    }
+
+    private var reconnects = 0
+    private var lastReconnectAt = 0L
+
+    // The connection to the file host dropped (or a read timed out): carry on from the same
+    // point instead of closing the player. Up to five tries; the count starts again once
+    // playback has run for a couple of minutes. error is null for a too-early end of file.
+    private fun reconnect(p: ExoPlayer, error: androidx.media3.common.PlaybackException?): Boolean {
+        if (playingTarget == null) return false // trailers
+        // Network and server errors only; a file the TV can't decode won't get better.
+        if (error != null && error.errorCode !in 2000..2999 &&
+            error.errorCode != androidx.media3.common.PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) return false
+        val now = System.currentTimeMillis()
+        if (now - lastReconnectAt > 120_000) reconnects = 0
+        if (reconnects >= 5) return false
+        reconnects++
+        lastReconnectAt = now
+        val position = p.currentPosition
+        loadingStatus.text = "Reconnecting..."
+        android.widget.Toast.makeText(this, "Connection dropped, reconnecting...", android.widget.Toast.LENGTH_SHORT).show()
+        progressHandler.postDelayed({
+            if (player !== p) return@postDelayed
+            p.seekTo(position)
+            p.prepare()
+            p.play()
+        }, 1500L * reconnects)
+        return true
     }
 
     private fun isDescendantOf(view: View, parent: View): Boolean {
@@ -5858,6 +5921,7 @@ class MainActivity : Activity() {
             .build()
         val start = { track: AddonSubtitleTrack ->
             activeAddonTrack = track
+            shownAddonLines = null
             progressHandler.removeCallbacks(addonSubtitleTicker)
             progressHandler.post(addonSubtitleTicker)
         }
@@ -5921,6 +5985,7 @@ class MainActivity : Activity() {
 
     private fun leavePlayer() {
         audioHeldFrom = null
+        playerView.keepScreenOn = false
         hideLoadingOverlay(animate = false)
         progressHandler.removeCallbacks(progressTicker)
         stopPlayerExtras()

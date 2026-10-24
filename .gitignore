@@ -6,3 +6,4 @@ local.properties
 # TMDB API key
 tmdb.properties
 *.apk
+trakt.properties
