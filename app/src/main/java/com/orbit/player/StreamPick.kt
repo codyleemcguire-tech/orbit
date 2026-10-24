@@ -34,7 +34,7 @@ object StreamPick {
             .flatMap { it.second }
             .filter { s ->
                 val text = "${s.name} ${s.description}"
-                s.url != null && s.youtubeId == null &&
+                (s.url != null || s.infoHash != null) && s.youtubeId == null &&
                     !notReady.containsMatchIn(s.name) && !camCopy.containsMatchIn(text) &&
                     (maxSizeGb <= 0 || (sizeGb(text) ?: 0.0) <= maxSizeGb)
             }

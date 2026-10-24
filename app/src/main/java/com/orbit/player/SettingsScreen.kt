@@ -71,6 +71,8 @@ internal fun MainActivity.showSettingsScreen() {
 
     val traktSection = panel()
     buildTraktSettings(traktSection)
+    val torBoxSection = panel()
+    buildTorBoxSettings(torBoxSection)
     val subtitlesSection = panel()
     buildSubtitleSettings(subtitlesSection)
     val playerSection = panel()
@@ -632,6 +634,125 @@ internal fun MainActivity.showStremioLogin(onDone: (String?) -> Unit) {
             true
         } else {
             false
+        }
+    }
+}
+
+// TorBox: sign in (a code, or an API key sent from a phone), then cached torrent links and
+// TorBox's own search join the sources page as instant links.
+internal fun MainActivity.buildTorBoxSettings(section: LinearLayout) {
+    fun render(focus: Boolean = false) {
+        section.removeAllViews()
+        section.addView(Ui.text(this, Ui.Type.Headline, "TorBox"))
+        val box = torBox
+        section.addView(Ui.text(this, Ui.Type.Body,
+            if (box.signedIn) "Signed in${box.account?.let { " as $it" }.orEmpty()}. " +
+                "Torrent links from your addons that TorBox already has are listed as \u201c\u26a1 TorBox\u201d " +
+                "and play straight away, and TorBox's own search adds more (when its search service is online)."
+            else "Sign in to play torrent links that are already cached on TorBox, straight away, " +
+                "and to find more with TorBox's own search.", Ui.textSecondary).apply { setPadding(0, 12, 0, 24) })
+        val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        section.addView(buttons)
+        fun button(label: String, onClick: () -> Unit) = makePicker(onClick).apply { text = label }.also {
+            buttons.addView(it, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = 18 })
+        }
+        val first = if (box.signedIn) {
+            button("Instant links:  " + if (box.enabled) "On" else "Off") {
+                box.enabled = !box.enabled
+                render(true)
+            }.also {
+                button("Sign out") {
+                    box.setKey(null)
+                    render(true)
+                }
+            }
+        } else {
+            button("Sign in with a code") { showTorBoxSignIn { render(true) } }.also {
+                button("Add API key from phone") {
+                    showPhoneLink({ render(true) }, "Add your TorBox API key",
+                        "Scan with your phone, paste your TorBox API key (torbox.app \u2192 Settings) and tap Save.",
+                        "Paste your TorBox API key. It's kept on this TV only.", "TorBox API key", "Save") { key ->
+                        box.setKey(key)
+                        box.checkAccount()?.let { "Signed in to TorBox as $it." }
+                            ?: "That key didn't work. Check it on torbox.app and try again.".also { box.setKey(null) }
+                    }
+                }
+            }
+        }
+        if (focus) first.requestFocus()
+    }
+    render()
+    // Keep the account line current (plan changes, expired keys).
+    if (torBox.signedIn) thread {
+        torBox.checkAccount()
+        Handler(Looper.getMainLooper()).post { if (currentScreen == "settings") render() }
+    }
+}
+
+// TorBox's sign-in for TVs: a code entered at torbox.app on a phone or computer.
+internal fun MainActivity.showTorBoxSignIn(onDone: () -> Unit) {
+    lateinit var status: TextView
+    lateinit var codeView: TextView
+    val qrView = ImageView(this)
+    var open = true
+    val content = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(48, 24, 48, 8)
+        addView(qrView, LinearLayout.LayoutParams(360, 360))
+        codeView = TextView(context).apply {
+            text = "…"
+            textSize = 40f
+            letterSpacing = 0.15f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, 18, 0, 6)
+        }
+        addView(codeView)
+        status = TextView(context).apply {
+            text = "Getting a code..."
+            textSize = 16f
+            setTextColor(Color.rgb(195, 202, 220))
+            gravity = Gravity.CENTER
+        }
+        addView(status)
+    }
+    val dialog = android.app.AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        .setTitle("Sign in to TorBox")
+        .setView(content)
+        .setNegativeButton("Cancel", null)
+        .setOnDismissListener { open = false }
+        .show()
+    thread {
+        val main = Handler(Looper.getMainLooper())
+        try {
+            val code = torBox.startSignIn()
+            val qr = Ui.qrCode(code.url, 360)
+            main.post {
+                qrView.setImageBitmap(qr)
+                codeView.text = code.code
+                status.text = "Scan the code, or go to torbox.app/oauth/device on your phone and enter the number above."
+            }
+            val until = System.currentTimeMillis() + code.expiresInS * 1000L
+            while (open && System.currentTimeMillis() < until) {
+                Thread.sleep(code.intervalS * 1000L)
+                if (!open) return@thread
+                val done = try { torBox.finishSignIn(code) } catch (e: java.io.IOException) { false }
+                if (done) {
+                    val account = torBox.checkAccount()
+                    main.post {
+                        dialog.dismiss()
+                        android.widget.Toast.makeText(this, "Signed in to TorBox" + (account?.let { " as $it" } ?: ""),
+                            android.widget.Toast.LENGTH_LONG).show()
+                        onDone()
+                    }
+                    return@thread
+                }
+            }
+            if (open) main.post { status.text = "The code expired. Close this and try again." }
+        } catch (e: Exception) {
+            main.post { status.text = e.message ?: "Couldn't reach TorBox. Check the TV's internet connection." }
         }
     }
 }

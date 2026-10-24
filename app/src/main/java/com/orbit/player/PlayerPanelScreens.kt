@@ -47,7 +47,7 @@ internal fun MainActivity.showSourcesPanel(type: String, id: String, target: Wat
         found.forEach { (addon, streams) ->
             rows += SidePanel.Row("${addon.name}  ·  ${streams.size}", header = true)
             streams.forEach { stream ->
-                if (stream.url == null) return@forEach
+                if (stream.url == null && stream.infoHash == null) return@forEach
                 val release = stream.description.lines().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
                 val details = listOfNotNull(
                     stream.name.takeIf { it.isNotBlank() && it != release },
@@ -85,6 +85,12 @@ internal fun MainActivity.showSourcesPanel(type: String, id: String, target: Wat
 }
 
 private fun MainActivity.switchToStream(stream: StremioStreams.Stream, type: String, id: String, target: WatchTarget) {
+    if (stream.url == null && stream.infoHash != null) {
+        resolveTorBox(stream, target, { note -> note?.let { Toast.makeText(this, it, Toast.LENGTH_SHORT).show() } }) { resolved ->
+            if (currentScreen == "player") switchToStream(resolved, type, id, target)
+        }
+        return
+    }
     val url = stream.url ?: return
     val sameTitle = id == playingId
     val startAt = if (sameTitle) player?.currentPosition ?: 0L

@@ -466,7 +466,38 @@ internal fun MainActivity.makeStreamRow(stream: StremioStreams.Stream, onFocused
     }
 }
 
+// A cached torrent: TorBox gives a direct link for it first (a second or two), then it plays
+// like any other stream.
+internal fun MainActivity.resolveTorBox(
+    stream: StremioStreams.Stream,
+    target: WatchTarget?,
+    onStatus: (String?) -> Unit,
+    then: (StremioStreams.Stream) -> Unit
+) {
+    onStatus("Getting the link from TorBox...")
+    thread {
+        val result = runCatching { torBox.resolve(stream, target?.season ?: -1, target?.episode ?: -1) }
+        Handler(Looper.getMainLooper()).post {
+            result.onSuccess { link ->
+                onStatus(null)
+                then(stream.copy(url = link))
+            }.onFailure { e ->
+                onStatus("TorBox: ${e.message ?: "couldn't get a link"}")
+            }
+        }
+    }
+}
+
 internal fun MainActivity.playStream(stream: StremioStreams.Stream) {
+    if (stream.url == null && stream.infoHash != null) {
+        val request = streamsRequest
+        resolveTorBox(stream, streamsTarget, { note ->
+            playbackError = note?.takeIf { it.startsWith("TorBox:") }
+            streamsNote = note?.takeUnless { it.startsWith("TorBox:") }
+            if (currentScreen == "streams") updateStreamsStatus()
+        }) { resolved -> if (request == streamsRequest && currentScreen == "streams") playStream(resolved) }
+        return
+    }
     playbackError = null
     playingStream = stream
     val url = stream.url

@@ -88,6 +88,8 @@ class MainActivity : Activity() {
     internal val library by lazy { StremioLibrary(prefs, progress, BuildConfig.TMDB_API_KEY) }
     // Trakt scrobbling, watchlist and paused titles, when signed in.
     internal val trakt by lazy { Trakt(prefs, progress, library, BuildConfig.TMDB_API_KEY) }
+    // TorBox: cached torrent links and TorBox's search (see TorBox, StreamSearch).
+    internal val torBox by lazy { TorBox(prefs) }
     internal val subtitleSettings by lazy { SubtitleSettings(prefs) }
     internal val playerSettings by lazy { PlayerSettings(prefs) }
     internal val tmdbSettings by lazy { TmdbSettings(prefs) }
@@ -210,6 +212,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         Ui.init(this)
         StremioAddons.diskCache = cacheDir
+        StreamSearch.torBox = torBox
 
         window.statusBarColor = Ui.background
         window.navigationBarColor = Ui.background

@@ -23,7 +23,11 @@ object StremioStreams {
         // Streams from one release share this, so the next episode can use the same one.
         val bingeGroup: String? = null,
         // The video's file name, used to find subtitles made for the same release.
-        val filename: String? = null
+        val filename: String? = null,
+        // A torrent (no url): played through TorBox when it's cached there (see TorBox).
+        val infoHash: String? = null,
+        val fileIdx: Int? = null,
+        val trackers: List<String> = emptyList()
     )
 
     // Addons whose manifest offers streams for this type and id.
@@ -84,8 +88,10 @@ object StremioStreams {
             val stream = streams.optJSONObject(i) ?: return@mapNotNull null
             val url = stream.optString("url").takeIf { it.startsWith("http") }
             val youtubeId = stream.optString("ytId").takeIf { it.isNotBlank() }
-            // Torrent-only (infoHash) and external-website streams can't be played here.
-            if (url == null && youtubeId == null) return@mapNotNull null
+            // Torrents (infoHash) play through TorBox when cached there (StreamSearch checks);
+            // external-website streams can't be played here.
+            val infoHash = stream.optString("infoHash").takeIf { it.length >= 32 }?.lowercase()
+            if (url == null && youtubeId == null && infoHash == null) return@mapNotNull null
 
             val hints = stream.optJSONObject("behaviorHints")
             val headers = mutableMapOf<String, String>()
@@ -102,6 +108,11 @@ object StremioStreams {
                 youtubeId = youtubeId,
                 headers = headers,
                 bingeGroup = hints?.optString("bingeGroup")?.takeIf { it.isNotBlank() },
+                infoHash = infoHash.takeIf { url == null },
+                fileIdx = if (stream.has("fileIdx")) stream.optInt("fileIdx") else null,
+                trackers = stream.optJSONArray("sources")?.let { arr ->
+                    (0 until arr.length()).map { arr.optString(it) }.filter { it.startsWith("tracker:") }.map { it.removePrefix("tracker:") }
+                }.orEmpty(),
                 filename = hints?.optString("filename")?.takeIf { it.isNotBlank() }
                     ?: stream.optString("description").ifBlank { stream.optString("title") }
                         .lines().firstOrNull { it.contains(Regex("\\.(mkv|mp4|avi)", RegexOption.IGNORE_CASE)) }

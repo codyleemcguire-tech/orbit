@@ -54,6 +54,10 @@ object StreamSearch {
         }
     }
 
+    // The profile's TorBox (set by MainActivity): torrent links are kept only when cached
+    // there, and TorBox's own search is asked too.
+    @Volatile var torBox: TorBox? = null
+
     private const val keepMs = 15 * 60 * 1000L
     private val main = Handler(Looper.getMainLooper())
     private val sessions = LinkedHashMap<String, Session>()
@@ -62,7 +66,8 @@ object StreamSearch {
 
     // The search for this title: a running or recent one, else a new one. Main thread.
     fun get(type: String, id: String, fresh: Boolean = false): Session {
-        val addonKey = StremioAddons.addonUrls.joinToString(",").hashCode().toString()
+        val box = torBox?.takeIf { it.enabled }
+        val addonKey = (StremioAddons.addonUrls.joinToString(",") + "|tb=${box != null}").hashCode().toString()
         val key = "$addonKey|$type|$id"
         val now = System.currentTimeMillis()
         sessions.entries.removeAll { (_, s) -> s.completedAt > 0 && now - s.completedAt > keepMs }
@@ -79,12 +84,25 @@ object StreamSearch {
                 StremioStreams.addonsFor(type, id)
             } catch (_: Exception) {
                 emptyList()
-            }
+            } + listOfNotNull(box?.let { StremioStreams.Addon(TorBox.searchName, TorBox.searchBase) })
             session.publishAddons(addons)
             addons.forEach { addon ->
                 pool.execute {
                     val streams = try {
-                        StremioStreams.fetchStreams(addon, type, id)
+                        if (addon.baseUrl == TorBox.searchBase) box?.search(type, id).orEmpty()
+                        else {
+                            val all = StremioStreams.fetchStreams(addon, type, id)
+                            // Torrent links: only those TorBox has cached, marked as instant.
+                            val hashes = all.mapNotNull { it.infoHash }
+                            val cached = if (box != null && hashes.isNotEmpty()) box.cached(hashes) else emptySet()
+                            all.mapNotNull { s ->
+                                when {
+                                    s.infoHash == null -> s
+                                    s.infoHash in cached -> s.copy(name = "⚡ TorBox  ·  " + s.name.replace('\n', ' '))
+                                    else -> null
+                                }
+                            }
+                        }
                     } catch (_: Exception) {
                         emptyList()
                     }
