@@ -125,7 +125,7 @@ object Profiles {
                 // delay suits this device's TV and sound system, not the other's.
                 .also { prefs ->
                     prefs.keys().asSequence().toList()
-                        .filter { it.startsWith("trakt_") || it == "audio_delay_ms" || it == "external_playing" }
+                        .filter { it.startsWith("trakt_") || it.startsWith("last_link_") || it == "audio_delay_ms" || it == "external_playing" }
                         .forEach { prefs.remove(it) }
                 })
             .put("progress", dump(context.getSharedPreferences(progressName(id), Context.MODE_PRIVATE)))

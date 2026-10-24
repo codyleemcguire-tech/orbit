@@ -21,6 +21,19 @@ class PlayerSettings(private val prefs: SharedPreferences) {
     // Tunnelled playback: the TV's hardware keeps sound and picture together (NuvioTV setting).
     var tunneling: Boolean get() = prefs.getBoolean("tunneling", false)
         set(v) = prefs.edit().putBoolean("tunneling", v).apply()
+    // Auto-play (StreamPick): "Off", "First source" or "Best quality"; how long to wait for
+    // addons; an optional size cap (GB, 0 = none) and addon; how long a title's last stream
+    // is reused for (hours, 0 = never).
+    var autoPlay: String get() = prefs.getString("auto_play", StreamPick.off) ?: StreamPick.off
+        set(v) = prefs.edit().putString("auto_play", v).apply()
+    var autoPlayWaitS: Int get() = prefs.getInt("auto_play_wait", 10)
+        set(v) = prefs.edit().putInt("auto_play_wait", v).apply()
+    var autoPlayMaxGb: Int get() = prefs.getInt("auto_play_max_gb", 0)
+        set(v) = prefs.edit().putInt("auto_play_max_gb", v).apply()
+    var autoPlayAddon: String get() = prefs.getString("auto_play_addon", "") ?: ""
+        set(v) = prefs.edit().putString("auto_play_addon", v).apply()
+    var reuseLinkHours: Int get() = prefs.getInt("reuse_link_hours", 1)
+        set(v) = prefs.edit().putInt("reuse_link_hours", v).apply()
     // "Orbit", "Ask each time" or the name of an external player (see externalPlayers).
     var playWith: String get() = prefs.getString("play_with", "Orbit") ?: "Orbit"
         set(v) = prefs.edit().putString("play_with", v).apply()

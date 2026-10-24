@@ -806,6 +806,8 @@ class MainActivity : Activity() {
     internal var panelSession: StreamSearch.Session? = null
     internal var panelListener: StreamSearch.Listener? = null
     internal var playingSubtitlesFound: List<StremioSubtitles.Subtitle> = emptyList()
+    // Auto-play or the last-used source has already started for this sources page.
+    internal var autoPlayStarted = false
 
     internal var onboarding = false
 

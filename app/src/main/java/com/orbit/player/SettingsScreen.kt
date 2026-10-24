@@ -387,6 +387,54 @@ internal fun MainActivity.buildPlayerSettings(section: LinearLayout) {
                 render("Skip intro")
             }
         }
+        option("Auto-play", ps.autoPlay,
+            "Start a source without choosing it yourself. \u201cBest quality\u201d picks the highest " +
+                "resolution, then Dolby Vision or HDR; both skip links still to be downloaded and cam copies. " +
+                "Press any button on the sources page to choose yourself instead.") {
+            choose("Auto-play", StreamPick.modes, StreamPick.modes.indexOf(ps.autoPlay).coerceAtLeast(0)) {
+                ps.autoPlay = StreamPick.modes[it]
+                render("Auto-play")
+            }
+        }
+        if (ps.autoPlay != StreamPick.off) {
+            val waits = listOf(5, 10, 15, 20, 30)
+            option("Wait for addons", "${ps.autoPlayWaitS} s",
+                "How long to wait for slower addons before picking from what's arrived.") {
+                choose("Wait for addons", waits.map { "$it seconds" }, waits.indexOf(ps.autoPlayWaitS).coerceAtLeast(0)) {
+                    ps.autoPlayWaitS = waits[it]
+                    render("Wait for addons")
+                }
+            }
+            val sizes = listOf(0, 5, 10, 20, 40)
+            option("Largest file", if (ps.autoPlayMaxGb == 0) "Any size" else "${ps.autoPlayMaxGb} GB",
+                "Skip bigger files when auto-playing (huge remuxes need a fast connection).") {
+                choose("Largest file", sizes.map { if (it == 0) "Any size" else "Up to $it GB" },
+                    sizes.indexOf(ps.autoPlayMaxGb).coerceAtLeast(0)) {
+                    ps.autoPlayMaxGb = sizes[it]
+                    render("Largest file")
+                }
+            }
+            val names = listOf("") + StremioAddons.addonUrls.mapNotNull { url ->
+                try { StremioAddons.manifest(url).optString("name").takeIf { it.isNotBlank() } } catch (_: Exception) { null }
+            }.distinct()
+            option("Auto-play from", ps.autoPlayAddon.ifBlank { "All addons" },
+                "Only auto-play this addon's streams.") {
+                choose("Auto-play from", names.map { it.ifBlank { "All addons" } }, names.indexOf(ps.autoPlayAddon).coerceAtLeast(0)) {
+                    ps.autoPlayAddon = names[it]
+                    render("Auto-play from")
+                }
+            }
+        }
+        val hours = listOf(0, 1, 6, 24)
+        option("Reuse last source", if (ps.reuseLinkHours == 0) "Off" else "For ${ps.reuseLinkHours} h",
+            "Play the same source again when you go back to something within this time, " +
+                "instead of searching. Back from the player shows all sources.") {
+            choose("Reuse last source", hours.map { if (it == 0) "Off" else "For $it hour" + if (it == 1) "" else "s" },
+                hours.indexOf(ps.reuseLinkHours).coerceAtLeast(0)) {
+                ps.reuseLinkHours = hours[it]
+                render("Reuse last source")
+            }
+        }
         toggle("Next episode button", ps.nextEpisodeButton,
             "During the credits of an episode (or its last 45 seconds), offer the next episode; " +
                 "OK plays it using the same source when possible.") { ps.nextEpisodeButton = it }

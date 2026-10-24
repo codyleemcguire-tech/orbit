@@ -58,7 +58,9 @@ internal fun MainActivity.showStreams(
     streamsNote = "Finding streams..."
     streamFocusKey = null
     playbackError = null
+    autoPlayStarted = false
     val request = ++streamsRequest
+    val opened = System.currentTimeMillis()
     showStreamsScreen()
 
     thread {
@@ -96,6 +98,7 @@ internal fun MainActivity.showStreams(
                     streamAddonOrder = addons.map { it.name }
                     streamsNote = if (addons.isEmpty()) "None of your Stremio addons offer streams for this." else null
                     if (currentScreen == "streams") updateStreamsStatus()
+                    maybeAutoPlay(request, opened)
                 }
 
                 override fun onResult(addon: StremioStreams.Addon, streams: List<StremioStreams.Stream>) {
@@ -108,11 +111,26 @@ internal fun MainActivity.showStreams(
                         if (currentScreen == "streams") insertStreamGroup(addon.name, streams)
                     }
                     if (currentScreen == "streams") updateStreamsStatus()
+                    maybeAutoPlay(request, opened)
                 }
             }
             streamsSession = session
             streamsListener = listener
             session.observe(listener)
+            // The source played last time, if recent: straight to it (NuvioTV's "reuse last
+            // link"). The search carries on, so Back from the player shows every source.
+            val last = if (target != null) StreamPick.recall(prefs, id, playerSettings.reuseLinkHours) else null
+            if (last != null && currentScreen == "streams") {
+                autoPlayStarted = true
+                streamsNote = "Playing the source you used last time (${last.addonName})."
+                updateStreamsStatus()
+                playStream(last)
+                return@post
+            }
+            // Auto-play also decides once the wait is up, whatever's still out.
+            if (playerSettings.autoPlay != StreamPick.off) {
+                progressHandler.postDelayed({ maybeAutoPlay(request, opened) }, playerSettings.autoPlayWaitS * 1000L + 50)
+            }
         }
     }
 }
@@ -177,6 +195,36 @@ internal fun MainActivity.showStreamsScreen() {
     updateStreamTabs()
     updateStreamsStatus()
     if (currentFocus == null || !isDescendantOf(currentFocus!!, root)) backLink.requestFocus()
+}
+
+// Auto-play (StreamPick): once every addon has answered, or the wait is up, start the chosen
+// stream, unless the viewer has pressed a button on this page (they're choosing).
+internal fun MainActivity.maybeAutoPlay(request: Int, opened: Long) {
+    val ps = playerSettings
+    if (ps.autoPlay == StreamPick.off || autoPlayStarted || streamsTouched || request != streamsRequest ||
+        currentScreen != "streams" || streamsTarget == null) return
+    val waitedEnough = System.currentTimeMillis() - opened >= ps.autoPlayWaitS * 1000L
+    if (streamsPending != 0 && !waitedEnough) return
+    val pick = StreamPick.choose(streamGroups, ps.autoPlay, ps.autoPlayMaxGb, ps.autoPlayAddon)
+    autoPlayStarted = true
+    if (pick == null) {
+        if (streamGroups.isNotEmpty()) {
+            streamsNote = "No source matched your auto-play settings; choose one below."
+            updateStreamsStatus()
+        }
+        return
+    }
+    val what = listOf(pick.addonName, Ui.streamBadges("${pick.name} ${pick.description}").joinToString(" · ") { it.first })
+        .filter { it.isNotBlank() }.joinToString("  ·  ")
+    streamsNote = "Auto-playing: $what. Press any button to choose yourself."
+    updateStreamsStatus()
+    progressHandler.postDelayed({
+        if (request != streamsRequest || currentScreen != "streams") return@postDelayed
+        if (streamsTouched) {
+            streamsNote = null
+            updateStreamsStatus()
+        } else playStream(pick)
+    }, 1500)
 }
 
 internal fun MainActivity.updateStreamsStatus() {
@@ -431,6 +479,7 @@ internal fun MainActivity.playStream(stream: StremioStreams.Stream) {
     val id = streamsWatchId.takeUnless { trailer }
     val target = streamsTarget.takeUnless { trailer }
     val saved = id?.let { progress.get(it) }
+    if (id != null) StreamPick.remember(prefs, id, stream)
     // Addon subtitles are normally fetched by now; wait up to 3 s if not.
     val play = { startAt: Long ->
         val pending = streamsSubtitles.takeUnless { trailer }

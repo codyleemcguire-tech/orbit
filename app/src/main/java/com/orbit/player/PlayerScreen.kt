@@ -309,6 +309,8 @@ internal fun MainActivity.startPlayback(
 
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     if (reconnect(it, error)) return
+                    // A remembered link that fails (expired) isn't offered again.
+                    playingId?.let { id -> StreamPick.forget(prefs, id) }
                     // The message shows on the streams screen; elsewhere (trailers, …) a toast instead.
                     if (playerReturnScreen == "streams") playbackError = "Couldn't play that stream (${error.errorCodeName}). " +
                         "Try another one, or hold OK on it to open it in another app."
