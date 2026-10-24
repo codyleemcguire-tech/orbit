@@ -1200,12 +1200,10 @@ class MainActivity : Activity() {
             }
         }
 
-        stopDiscoverFocusWatcher()
-        setContentView(frame)
-        homeFrame = frame
-        homeDirty = false
         // Scrolling anywhere on HOME (rows or the row list) checks for covers to load. The
         // observer is shared by the whole window, so it's attached and removed with HOME.
+        // Set up before HOME goes on screen: when the window is already showing (after
+        // "Who's watching?"), setContentView attaches it straight away.
         val scrollWatcher = android.view.ViewTreeObserver.OnScrollChangedListener {
             lazyLoadHandler.removeCallbacks(lazyLoadPass)
             lazyLoadHandler.postDelayed(lazyLoadPass, 120)
@@ -1219,6 +1217,10 @@ class MainActivity : Activity() {
                 v.viewTreeObserver.removeOnScrollChangedListener(scrollWatcher)
             }
         })
+        stopDiscoverFocusWatcher()
+        setContentView(frame)
+        homeFrame = frame
+        homeDirty = false
         restoreHomeFocus()
         if (heroItem == null) showHero(null)
         else showHero(heroItem, immediate = true)
