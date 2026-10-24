@@ -3569,6 +3569,8 @@ class MainActivity : Activity() {
         useContentScroll()
         currentScreen = "streams"
         root.removeAllViews()
+        // Other screens (the splash, profiles) centre their content.
+        root.gravity = Gravity.TOP
 
         val backLink = TextView(this).apply {
             text = "‹   Back"
@@ -3633,7 +3635,11 @@ class MainActivity : Activity() {
                 streamsPending > 0 -> "$found streams so far · waiting for $streamsPending " +
                     (if (streamsPending == 1) "addon" else "addons") + "..."
                 streamsPending == 0 && found == 0 -> "No streams found."
-                streamsPending == 0 -> "$found streams · OK plays in Orbit, hold OK to open in another app."
+                streamsPending == 0 -> "$found streams · OK plays in " + when (val with = playerSettings.playWith) {
+                    "Orbit" -> "Orbit"
+                    "Ask each time" -> "the player you pick"
+                    else -> if (installedExternalPlayers().any { it.name == with }) with else "Orbit"
+                } + ", hold OK to open in another app."
                 else -> null
             }
         ).joinToString("\n")
@@ -3658,6 +3664,19 @@ class MainActivity : Activity() {
             if (key != null && key == streamFocusKey) restore = row
         }
 
+        // The stream at the top of the list before this group arrives: while the viewer is
+        // still on it (or hasn't reached the list), focus stays on whatever is at the top.
+        fun topStream(): View? {
+            for (i in 0 until list.childCount) {
+                val g = list.getChildAt(i) as ViewGroup
+                if (g.visibility == View.VISIBLE) return g.getChildAt(1)
+            }
+            return null
+        }
+        val oldTop = topStream()
+        val focusBefore = currentFocus
+        val atTop = focusBefore == null || focusBefore === streamsBack || focusBefore === oldTop
+
         // Slot the group in at its addon's place in the account order.
         val rank = streamAddonOrder.indexOf(addonName)
         var position = list.childCount
@@ -3675,7 +3694,7 @@ class MainActivity : Activity() {
             updateStreamTabs()
         }
         // A group added above the focused stream pushes it down; keep it on screen.
-        currentFocus?.let { focused ->
+        currentFocus?.takeUnless { atTop }?.let { focused ->
             if (isDescendantOf(focused, list)) focused.post {
                 focused.requestRectangleOnScreen(
                     android.graphics.Rect(0, 0, focused.width, focused.height)
@@ -3683,26 +3702,23 @@ class MainActivity : Activity() {
             }
         }
 
-        val focused = currentFocus
         when {
-            !streamsTouched -> {
-                var top: View? = null
-                for (i in 0 until list.childCount) {
-                    val g = list.getChildAt(i) as ViewGroup
-                    if (g.visibility == View.VISIBLE) {
-                        top = g.getChildAt(1)
-                        break
-                    }
-                }
-                top?.requestFocus()
-                contentScroll.post { contentScroll.scrollTo(0, 0) }
-            }
+            // Back from the player: the stream that was playing.
             restore != null && group.visibility == View.VISIBLE -> restore!!.requestFocus()
-            // First results: move from BACK onto the first stream, as before.
-            focused == null || focused === streamsBack ->
-                if (streamFocusKey == null && group.visibility == View.VISIBLE) {
-                    group.getChildAt(1)?.requestFocus()
-                }
+            // Otherwise the list opens at its top stream, and stays there as more addons
+            // answer, until the viewer moves down it or onto the tabs.
+            atTop || !streamsTouched -> {
+                topStream()?.requestFocus()
+                // After the next layout: focusing a row scrolls it to the top edge, which
+                // would hide the title and addon tabs above it.
+                contentScroll.viewTreeObserver.addOnGlobalLayoutListener(object :
+                    android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                    override fun onGlobalLayout() {
+                        contentScroll.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        contentScroll.scrollTo(0, 0)
+                    }
+                })
+            }
         }
     }
 
