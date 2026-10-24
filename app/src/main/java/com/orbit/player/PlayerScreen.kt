@@ -256,6 +256,8 @@ internal fun MainActivity.startPlayback(
     val subs = subtitleSettings
     subs.applyStyle(playerView.subtitleView)
     playingDetails = null
+    playingSubtitlesFound = addonSubtitles
+    closeSidePanel()
     playerControls.release()
     pauseOverlay.hide()
     pauseOverlay.logo.visibility = View.GONE
@@ -406,7 +408,6 @@ internal fun MainActivity.showSubtitleMenu() {
     val entries = mutableListOf<Pair<String, (() -> Unit)>>()
     var selected = 0
     val textDisabled = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
-    entries += ("Audio delay (lip sync):  " + formatAudioDelay(audioDelayMs)) to { showAudioDelay() }
     val delayLabel = "Subtitle delay:  " + formatDelay(subtitleDelayMs)
     entries += delayLabel to { showSubtitleDelay() }
     entries += "Off" to {
@@ -416,7 +417,7 @@ internal fun MainActivity.showSubtitleMenu() {
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             .build()
     }
-    selected = 2
+    selected = 1
     p.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.forEach { group ->
         for (i in 0 until group.length) {
             if (!group.isTrackSupported(i)) continue
@@ -464,7 +465,7 @@ internal fun MainActivity.showSubtitleMenu() {
         if (activeAddonTrack?.subtitle == sub) selected = entries.size
         entries += name to { showAddonSubtitle(sub) }
     }
-    if (entries.size == 3) {
+    if (entries.size == 2) {
         android.widget.Toast.makeText(this, "This video has no subtitles", android.widget.Toast.LENGTH_SHORT).show()
         return
     }
@@ -475,7 +476,7 @@ internal fun MainActivity.showSubtitleMenu() {
         if ((counts[name] ?: 0) < 2) name
         else "$name  ·  ${seen.merge(name, 1, Int::plus)}"
     }
-    choose("Subtitles and audio", names, selected) { entries[it].second() }
+    showListPanel("Subtitles", names, selected) { entries[it].second() }
 }
 
 // ---- Skip intro, next episode, frame-rate matching ---------------------------------
@@ -840,6 +841,7 @@ internal fun MainActivity.showAudioDelay() {
 internal fun MainActivity.leavePlayer() {
     audioHeldFrom = null
     playerControls.release()
+    closeSidePanel()
     progressHandler.removeCallbacks(showPauseOverlayLater)
     pauseOverlay.hide()
     playerView.keepScreenOn = false
@@ -874,6 +876,8 @@ internal fun MainActivity.handlePlayerKey(event: KeyEvent): Boolean {
         return true
     }
     if (event.keyCode == KeyEvent.KEYCODE_BACK) return false
+    // A side panel takes the remote: focus moves through its list as on any page.
+    if (sidePanel.isShowing) return false
     if (pauseOverlay.isShowing) {
         if (event.action == KeyEvent.ACTION_DOWN) {
             pauseOverlay.hide()
@@ -930,9 +934,16 @@ internal fun MainActivity.controlsHost() = object : PlayerControls.Host {
     override fun nextEpisode() { nextEpisode?.let { playNextEpisode(it) } }
     override fun subtitles() = showSubtitleMenu()
     override fun audio() = showAudioMenu()
-    // Back to the sources page (the side panel comes later); progress is saved on the way.
-    override fun sources() = leavePlayer()
-    override fun episodes() {}
+    override fun sources() {
+        val target = playingTarget
+        val id = playingId
+        if (target == null || id == null) {
+            android.widget.Toast.makeText(this@controlsHost, "A trailer has no other sources.", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        showSourcesPanel(target.type, id, target)
+    }
+    override fun episodes() = showEpisodesPanel()
     override fun speed() = showSpeedMenu()
     override fun aspectRatio() = cycleAspectRatio()
     override fun streamInfo() = showStreamInfo()
@@ -942,7 +953,7 @@ internal fun MainActivity.controlsHost() = object : PlayerControls.Host {
         openStreamElsewhere(stream)
     }
     override val hasNextEpisode get() = nextEpisode != null
-    override val hasEpisodes get() = false
+    override val hasEpisodes get() = playingTarget?.let { it.type == "series" && it.tvId > 0 } == true
     override fun focusVideo() { playerView.requestFocus() }
 }
 
@@ -1000,7 +1011,7 @@ internal fun MainActivity.showAudioMenu() {
             }
         }
     }
-    choose("Audio", entries.map { it.first }, selected) { entries[it].second() }
+    showListPanel("Audio", entries.map { it.first }, selected) { entries[it].second() }
 }
 
 internal fun audioCodecName(mime: String?, codecs: String?): String? = when (mime) {

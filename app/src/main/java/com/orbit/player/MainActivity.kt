@@ -249,6 +249,7 @@ class MainActivity : Activity() {
             addView(playerView, FrameLayout.LayoutParams(-1, -1))
             addView(playerControls.view, FrameLayout.LayoutParams(-1, -1))
             addView(pauseOverlay.view, FrameLayout.LayoutParams(-1, -1))
+            addView(sidePanel.view, FrameLayout.LayoutParams(-1, -1))
             addView(playerAction, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
                 rightMargin = Ui.gutter
                 bottomMargin = 170
@@ -799,6 +800,12 @@ class MainActivity : Activity() {
     internal val pauseOverlay by lazy { PauseOverlay(this) }
     internal var playingDetails: TmdbMeta.Details? = null
     internal val showPauseOverlayLater = Runnable { showPauseOverlay() }
+    // The player's side panel (sources, episodes, subtitles, audio) and the stream search it's
+    // showing; the addon subtitles found for the playing title, kept for switching source.
+    internal val sidePanel by lazy { SidePanel(this) }
+    internal var panelSession: StreamSearch.Session? = null
+    internal var panelListener: StreamSearch.Listener? = null
+    internal var playingSubtitlesFound: List<StremioSubtitles.Subtitle> = emptyList()
 
     internal var onboarding = false
 
@@ -874,6 +881,7 @@ class MainActivity : Activity() {
             "player" -> {
                 // First Back closes the pause page or hides the controls; the next leaves.
                 when {
+                    sidePanel.isShowing -> sidePanel.onBack?.invoke() ?: closeSidePanel()
                     pauseOverlay.isShowing -> pauseOverlay.hide()
                     playerControls.isShowing -> playerControls.hide()
                     else -> leavePlayer()
