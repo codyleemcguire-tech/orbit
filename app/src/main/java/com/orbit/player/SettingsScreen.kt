@@ -94,7 +94,17 @@ internal fun MainActivity.showSettingsScreen() {
     refresh = { note ->
         val email = prefs.getString("stremio_email", null)
         buttons.removeAllViews()
-        if (email == null) {
+        if (email != null && !prefs.contains("stremio_auth_key")) {
+            // The sign-in ended (signed out elsewhere, or a copied profile's shared session).
+            status.text = "Your Stremio sign-in for $email has ended. Your addons below keep working; " +
+                "sign in again to keep them in sync with your account."
+            addButton("Sign in again") { showStremioLogin(refresh) }
+            addButton("Remove synced addons") {
+                clearStremioSession()
+                resetDiscover()
+                refresh("Removed.")
+            }
+        } else if (email == null) {
             status.text = "Not signed in. Discover shows the catalogs of the addons in " +
                 "your Stremio account, so sign in to see them."
             addButton("Sign in to Stremio") { showStremioLogin(refresh) }
@@ -111,8 +121,8 @@ internal fun MainActivity.showSettingsScreen() {
                 }
             }
             addButton("Sign out") {
-                val authKey = prefs.getString("stremio_auth_key", null)
-                if (authKey != null) thread { StremioAccount.logout(authKey) }
+                // This device only: a copied profile shares the sign-in with your other
+                // devices, so it isn't ended on Stremio's side.
                 clearStremioSession()
                 resetDiscover()
                 refresh("Signed out.")
@@ -614,6 +624,7 @@ internal fun MainActivity.showStremioLogin(onDone: (String?) -> Unit) {
                     val session = StremioAccount.login(address, secret)
                     prefs.edit()
                         .putString("stremio_auth_key", session.authKey)
+                        .remove("stremio_expired")
                         .putString("stremio_email", session.email)
                         .apply()
                     syncStremioAddons()

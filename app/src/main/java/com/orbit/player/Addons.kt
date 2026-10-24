@@ -74,8 +74,9 @@ internal fun MainActivity.saveLocalAddons(addons: List<StremioAccount.Addon>) {
 }
 
 internal fun MainActivity.applySavedAddons() {
-    val synced =
-        if (prefs.contains("stremio_auth_key")) savedAddons().map { it.url } else emptyList()
+    // The last list synced from Stremio stays in use even if the sign-in ends: each addon's
+    // URL carries its own settings (and debrid key), so it works without Stremio.
+    val synced = savedAddons().map { it.url }
     // Account addons first (Stremio's order), then Orbit's own; no duplicates.
     StremioAddons.addonUrls = (synced + localAddons().map { it.url }).distinct()
 }
@@ -257,6 +258,7 @@ internal fun MainActivity.clearStremioSession() {
         .remove("stremio_auth_key")
         .remove("stremio_email")
         .remove("stremio_addons")
+        .remove("stremio_expired")
         .apply()
     applySavedAddons()
 }
@@ -275,8 +277,11 @@ internal fun MainActivity.syncStremioAddons(): String {
         applySavedAddons()
         "Synced ${addons.size} addons from Stremio."
     } catch (_: StremioAccount.SessionExpiredException) {
-        clearStremioSession()
-        "Your Stremio session has expired. Please sign in again in Settings."
+        // Only the sign-in goes; the addons synced from it keep working (applySavedAddons).
+        // Deleting them here is what emptied Orbit when a copied profile's shared sign-in
+        // ended on another device.
+        prefs.edit().remove("stremio_auth_key").putBoolean("stremio_expired", true).apply()
+        "Your Stremio sign-in has ended. Your addons keep working; sign in again in Settings to keep them in sync."
     } catch (_: Exception) {
         "Couldn't reach Stremio, so your last synced addons are being used."
     }
