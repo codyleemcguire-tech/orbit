@@ -139,7 +139,9 @@ object TmdbMeta {
         }.orEmpty()
         val trailer = (videos.firstOrNull { it.optString("type") == "Trailer" && it.optBoolean("official") }
             ?: videos.firstOrNull { it.optString("type") == "Trailer" }
-            ?: videos.firstOrNull { it.optString("type") == "Teaser" })?.optString("key")
+            ?: videos.firstOrNull { it.optString("type") == "Teaser" }
+            // Some only list it as a clip named "Trailer".
+            ?: videos.firstOrNull { it.optString("name").contains("trailer", true) })?.optString("key")
         return Details(mediaType, tmdbId, imdb, metadata, logo, status, studios, director, cast, recs, trailer)
             .also { cache[cacheKey] = it }
     }

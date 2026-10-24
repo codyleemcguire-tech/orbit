@@ -3748,6 +3748,18 @@ class MainActivity : Activity() {
         lateinit var button: TextView
         button = Ui.button(this, "▶  Trailer") { playTrailer(youtubeKey, button) }
         hero.buttons.addView(button, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 20 })
+        linkButtonRow(hero.buttons)
+    }
+
+    // Left/right move along the page's buttons and stop at the ends, rather than jumping
+    // down to whatever lies below (the seasons, the cast).
+    private fun linkButtonRow(row: LinearLayout) {
+        val buttons = (0 until row.childCount).map { row.getChildAt(it) }
+        buttons.forEach { if (it.id == View.NO_ID) it.id = View.generateViewId() }
+        buttons.forEachIndexed { i, b ->
+            b.nextFocusLeftId = buttons.getOrNull(i - 1)?.id ?: b.id
+            b.nextFocusRightId = buttons.getOrNull(i + 1)?.id ?: b.id
+        }
     }
 
     private val youtubeApps = listOf(
@@ -3876,6 +3888,7 @@ class MainActivity : Activity() {
             }
         }
         hero.buttons.addView(playButton)
+        linkButtonRow(hero.buttons)
         // Play becomes Resume once the film's id (and so its saved progress) is known.
         val showResume = {
             lastFilmImdbId?.let { progress.get(it) }?.takeIf { it.resumable }?.let {
@@ -4178,6 +4191,7 @@ class MainActivity : Activity() {
         }
 
         playButton.id = View.generateViewId()
+        linkButtonRow(hero.buttons)
         if (episodeFocusIndex < 0 && focusCastIndex < 0) playButton.requestFocus() else backButton.requestFocus()
     }
 
@@ -4535,10 +4549,12 @@ class MainActivity : Activity() {
                     }
 
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                        playbackError = "Couldn't play that stream (${error.errorCodeName}). " +
+                        // The message shows on the streams screen; elsewhere (trailers, …) a toast instead.
+                        if (playerReturnScreen == "streams") playbackError = "Couldn't play that stream (${error.errorCodeName}). " +
                             "Try another one, or hold OK on it to open it in another app."
-                        if (playerReturnScreen != "streams") android.widget.Toast.makeText(
-                            this@MainActivity, "Couldn't play the trailer.", android.widget.Toast.LENGTH_LONG).show()
+                        else android.widget.Toast.makeText(this@MainActivity,
+                            if (playingTarget == null) "Couldn't play the trailer." else "Couldn't play that stream.",
+                            android.widget.Toast.LENGTH_LONG).show()
                         leavePlayer()
                     }
 

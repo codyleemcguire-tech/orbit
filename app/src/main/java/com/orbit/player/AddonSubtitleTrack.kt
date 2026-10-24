@@ -58,7 +58,7 @@ class AddonSubtitleTrack(val subtitle: StremioSubtitles.Subtitle, private val cu
                 decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString()
             } catch (_: Exception) {
                 String(bytes, charset("windows-1252"))
-            }.removePrefix("﻿")
+            }.removePrefix("\uFEFF") // byte-order mark
         }
 
         private val timing = Regex(
