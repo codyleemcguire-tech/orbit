@@ -82,6 +82,26 @@ class WatchProgress(context: Context, fileName: String = "orbit_progress") {
         save(entry.copy(positionMs = duration, durationMs = duration, updatedAt = System.currentTimeMillis()))
     }
 
+    // Drops entries that can't be resumed (a show with no episode, an impossible length),
+    // such as ones Stremio recorded oddly. Returns how many went.
+    fun pruneUnusable(): Int {
+        val bad = prefs.all.keys.filter { id ->
+            val e = get(id) ?: return@filter true
+            e.durationMs !in 1..maxDurationMs || (e.type == "series" && id.count { it == ':' } != 2)
+        }
+        if (bad.isNotEmpty()) prefs.edit().apply { bad.forEach { remove(it) } }.apply()
+        return bad.size
+    }
+
+    // Forgets one movie or episode only.
+    fun removeId(id: String) {
+        prefs.edit().remove(id).apply()
+    }
+
+    // The TMDB id already known for a show, from any of its episodes ("tt0903747:…").
+    fun tvIdFor(imdbId: String): Int? =
+        prefs.all.keys.firstOrNull { it.startsWith("$imdbId:") }?.let { get(it) }?.tvId?.takeIf { it > 0 }
+
     // Progress for every episode of a show, keyed by season and episode number.
     fun forShow(tvId: Int): Map<Pair<Int, Int>, Entry> =
         prefs.all.mapNotNull { (id, value) -> (value as? String)?.let { parse(id, it) } }
@@ -108,6 +128,9 @@ class WatchProgress(context: Context, fileName: String = "orbit_progress") {
     }
 
     companion object {
+        // Longer than any real film or episode: a bad length, not a long video.
+        const val maxDurationMs = 12 * 3600_000L
+
         fun format(ms: Long): String {
             val total = ms / 1000
             val h = total / 3600

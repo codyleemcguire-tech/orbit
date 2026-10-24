@@ -54,7 +54,11 @@ object StremioAccount {
         }
     }
 
-    private fun call(method: String, body: JSONObject): JSONObject {
+    private fun call(method: String, body: JSONObject): JSONObject =
+        callAny(method, body) as? JSONObject ?: throw IllegalStateException("Stremio sent an unexpected answer")
+
+    // The "result" of any API method: an object for most, an array for datastoreGet.
+    internal fun callAny(method: String, body: JSONObject): Any {
         val connection = URL("https://api.strem.io/api/$method").openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "POST"
@@ -73,7 +77,7 @@ object StremioAccount {
                 if (error.optInt("code") == 1) throw SessionExpiredException()
                 throw IllegalStateException(error.optString("message", "Stremio error"))
             }
-            return response.optJSONObject("result")
+            return response.opt("result")?.takeIf { it != JSONObject.NULL }
                 ?: throw IllegalStateException("Stremio HTTP $status")
         } finally {
             connection.disconnect()

@@ -84,6 +84,8 @@ class MainActivity : Activity() {
     // The profile in use; switching profiles recreates the activity with the new one.
     private val profile by lazy { Profiles.active(this) }
     private val progress by lazy { WatchProgress(this, Profiles.progressName(profile.id)) }
+    // My List and progress, synced with the Stremio library when signed in.
+    private val library by lazy { StremioLibrary(prefs, progress, BuildConfig.TMDB_API_KEY) }
     private val subtitleSettings by lazy { SubtitleSettings(prefs) }
     private val playerSettings by lazy { PlayerSettings(prefs) }
     private val tmdbSettings by lazy { TmdbSettings(prefs) }
@@ -237,6 +239,7 @@ class MainActivity : Activity() {
         }
 
         applySavedAddons()
+        syncLibrary()
         // Read addon manifests in the background so the first Play is quick.
         thread { StremioAddons.loadManifests() }
         // Opening Orbit: splash, then "Who's watching?", then Home. Switching profile
@@ -1070,6 +1073,8 @@ class MainActivity : Activity() {
         currentScreen = "home"
         detailsReturnScreen = "home"
         actorPages.clear()
+        // Watched on another device a while ago? Pick it up (at most every five minutes).
+        if (System.currentTimeMillis() - library.lastPull > 5 * 60_000 && library.lastPull > 0) syncLibrary()
         val kept = homeFrame
         if (!homeDirty && kept != null) {
             stopDiscoverFocusWatcher()
@@ -1177,9 +1182,12 @@ class MainActivity : Activity() {
         continueItems.clear()
         collectionItems.clear()
         val collections = savedCollections()
+        val myList = library.myList()
+        myListItems.clear()
         val rowLabels = listOfNotNull(
             "Continue movies".takeIf { continueMovies.isNotEmpty() },
-            "Continue shows".takeIf { continueShows.isNotEmpty() }
+            "Continue shows".takeIf { continueShows.isNotEmpty() },
+            "My List".takeIf { myList.isNotEmpty() }
         ) + collections.map { "\u0000" + it.id } + listOf("Popular movies", "Popular series")
         rowLabels.forEachIndexed { index, label ->
             // Collection rows are keyed by id (prefixed so they can't clash with a title).
@@ -1194,6 +1202,7 @@ class MainActivity : Activity() {
             when (label) {
                 "Continue movies" -> fillContinueRow(index, continueMovies)
                 "Continue shows" -> fillContinueRow(index, continueShows)
+                "My List" -> fillMyListRow(index, myList)
                 in collections.map { "\u0000" + it.id } -> fillCollectionRow(index, collection!!)
                 "Popular movies" -> loadHomeRow(index, "movies", cachedMovies) { TmdbTest.fetchPopularMovies(it) }
                 else -> loadHomeRow(index, "shows", cachedShows) { TmdbTest.fetchPopularTvShows(it) }
@@ -1934,8 +1943,14 @@ class MainActivity : Activity() {
             .setTitle(listOf(title, entry.episodeLabel).filter { it.isNotBlank() }.joinToString("  ·  "))
             .setItems(options.toTypedArray()) { _, which ->
                 when (which) {
-                    0 -> progress.remove(entry)
-                    1 -> progress.markWatched(entry)
+                    0 -> {
+                        progress.remove(entry)
+                        library.dismiss(entry)
+                    }
+                    1 -> {
+                        progress.markWatched(entry)
+                        progress.get(entry.id)?.let { library.pushProgress(it, force = true) }
+                    }
                     else -> return@setItems
                 }
                 removeContinueCard(card)
@@ -1985,13 +2000,102 @@ class MainActivity : Activity() {
             showFolderScreen(collection, folder)
             return
         }
+        myListItems[item]?.let { saved ->
+            openListItem(saved)
+            return
+        }
         val entry = continueItems[item]
         if (entry != null && entry.type == "movie") {
             showFilmDetails(item.title, item.posterPath.orEmpty(), imdbId = entry.id)
             return
         }
         if (item.mediaType == "tv") showTvDetails(item.id, item.title, item.posterPath.orEmpty())
-        else showFilmDetails(item.title, item.posterPath.orEmpty())
+        else showFilmDetails(item.title, item.posterPath.orEmpty(), tmdbId = item.id.takeIf { it > 0 })
+    }
+
+    // ---- My List ----
+
+    private val myListItems = java.util.IdentityHashMap<TmdbTest.CatalogueItem, StremioLibrary.ListItem>()
+
+    private fun fillMyListRow(index: Int, list: List<StremioLibrary.ListItem>) {
+        val items = list.map { saved ->
+            TmdbTest.CatalogueItem(
+                id = saved.tmdbId,
+                title = saved.name,
+                overview = "",
+                posterPath = saved.poster.ifBlank { null },
+                mediaType = if (saved.type == "series") "tv" else "movie",
+                backdropPath = saved.background.ifBlank { null }
+            ).also { myListItems[it] = saved }
+        }
+        homeRowItems[index] = items
+        fillHomeRow(index, items.map { item ->
+            makePosterCard(item.title, "", item.posterPath, dimRow = false) { openHomeItem(item) }
+        })
+    }
+
+    // Opens a saved title's page; a show needs its TMDB id, looked up if it isn't known yet.
+    private fun openListItem(saved: StremioLibrary.ListItem) {
+        if (saved.type != "series") {
+            showFilmDetails(saved.name, saved.poster, imdbId = saved.id, tmdbId = saved.tmdbId.takeIf { it > 0 })
+            return
+        }
+        if (saved.tmdbId > 0) {
+            showImdbIds[saved.tmdbId] = saved.id
+            showTvDetails(saved.tmdbId, saved.name, saved.poster)
+            return
+        }
+        thread {
+            val tvId = try {
+                TmdbTest.findTvIdByImdb(saved.id, BuildConfig.TMDB_API_KEY)
+            } catch (_: Exception) {
+                null
+            }
+            Handler(Looper.getMainLooper()).post {
+                if (currentScreen != "home") return@post
+                if (tvId != null) showTvDetails(tvId, saved.name, saved.poster)
+                else android.widget.Toast.makeText(this, "Couldn't open ${saved.name}.", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // "+ My List" on a film or show page. imdbId finds the title's IMDb id (looked up
+    // off the main thread when the page doesn't know it yet).
+    private fun addMyListButton(hero: DetailHero, type: String, title: String, poster: String, tmdbId: () -> Int, imdbId: () -> String?) {
+        lateinit var button: TextView
+        fun paint(id: String?) {
+            button.text = if (library.inList(id)) "✓  My List" else "+  My List"
+        }
+        button = Ui.button(this, "+  My List") {
+            val screen = currentScreen
+            thread {
+                val id = try {
+                    imdbId()
+                } catch (_: Exception) {
+                    null
+                }
+                Handler(Looper.getMainLooper()).post {
+                    if (currentScreen != screen) return@post
+                    if (id == null) {
+                        android.widget.Toast.makeText(this, "Couldn't find this title's id.", android.widget.Toast.LENGTH_SHORT).show()
+                        return@post
+                    }
+                    val added = library.toggle(id, type, title, poster, tmdbId())
+                    homeDirty = true
+                    paint(id)
+                    android.widget.Toast.makeText(this,
+                        if (added) "Added to My List" else "Removed from My List", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        hero.buttons.addView(button, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 20 })
+        linkButtonRow(hero.buttons)
+        // Show the right label once the id is known.
+        val screen = currentScreen
+        thread {
+            val id = try { imdbId() } catch (_: Exception) { null }
+            Handler(Looper.getMainLooper()).post { if (currentScreen == screen) paint(id) }
+        }
     }
 
     // Play on the hero: a film goes straight to its streams; a series opens its episodes.
@@ -3629,7 +3733,8 @@ class MainActivity : Activity() {
     }
 
     // Saves where the viewer is in the current title (called every 10 s and on exit).
-    private fun saveProgress(finished: Boolean = false) {
+    // pushNow: send to Stremio straight away (leaving the player) rather than once a minute.
+    private fun saveProgress(finished: Boolean = false, pushNow: Boolean = false) {
         val p = player ?: return
         val id = playingId ?: return
         val target = playingTarget ?: return
@@ -3637,13 +3742,31 @@ class MainActivity : Activity() {
         val position = if (finished) duration else p.currentPosition
         if (position <= 0) return
         homeDirty = true // Continue rows change
-        progress.save(
-            WatchProgress.Entry(
-                id, target.type, target.title, target.episodeLabel, target.poster,
-                target.tvId, target.season, target.episode,
-                position, duration, System.currentTimeMillis()
-            )
+        val entry = WatchProgress.Entry(
+            id, target.type, target.title, target.episodeLabel, target.poster,
+            target.tvId, target.season, target.episode,
+            position, duration, System.currentTimeMillis()
         )
+        progress.save(entry)
+        library.pushProgress(entry, force = finished || pushNow)
+    }
+
+    // Brings My List and progress up to date from the Stremio library. Home is rebuilt if
+    // anything on it changed (straight away when it's the screen showing).
+    private fun syncLibrary() {
+        if (!library.signedIn) return
+        thread {
+            val changed = try {
+                library.pull()
+            } catch (_: Exception) {
+                false
+            }
+            Handler(Looper.getMainLooper()).post {
+                if (!changed) return@post
+                homeDirty = true
+                if (currentScreen == "home") showHomeScreen()
+            }
+        }
     }
 
     private val progressTicker = object : Runnable {
@@ -3947,6 +4070,11 @@ class MainActivity : Activity() {
         }
         hero.buttons.addView(playButton)
         linkButtonRow(hero.buttons)
+        addMyListButton(hero, "movie", title, posterFile, { lastFilmTmdbId ?: 0 }) {
+            lastFilmImdbId?.takeIf { lastFilmTitle == title }
+                ?: lastFilmTmdbId?.let { TmdbTest.fetchImdbId("movie", it, BuildConfig.TMDB_API_KEY) }
+                ?: resolveFilmImdbId(title)
+        }
         // Play becomes Resume once the film's id (and so its saved progress) is known.
         val showResume = {
             lastFilmImdbId?.let { progress.get(it) }?.takeIf { it.resumable }?.let {
@@ -4031,6 +4159,9 @@ class MainActivity : Activity() {
         var playFirst: (() -> Unit)? = null
         val playButton = Ui.button(this, "▶  Play", primary = true) { playFirst?.invoke() }
         hero.buttons.addView(playButton)
+        addMyListButton(hero, "series", title, posterPath, { tvId }) {
+            showImdbIds[tvId] ?: TmdbTest.fetchImdbId("tv", tvId, BuildConfig.TMDB_API_KEY)?.also { showImdbIds[tvId] = it }
+        }
         val backButton = hero.back
 
         root.addView(Ui.sectionTitle(this, "Seasons").apply { setPadding(0, 8, 0, 0) })
@@ -5563,7 +5694,7 @@ class MainActivity : Activity() {
         hideLoadingOverlay(animate = false)
         progressHandler.removeCallbacks(progressTicker)
         stopPlayerExtras()
-        saveProgress()
+        saveProgress(pushNow = true)
         playingId = null
         playingTarget = null
         playerView.player = null
