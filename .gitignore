@@ -7,3 +7,4 @@ local.properties
 tmdb.properties
 *.apk
 trakt.properties
+__pycache__/

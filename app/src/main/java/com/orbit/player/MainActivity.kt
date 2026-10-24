@@ -42,8 +42,8 @@ class MainActivity : Activity() {
     internal lateinit var contentScroll: ScrollView
     internal lateinit var homePlayButton: View
     internal lateinit var homeRowsScroll: ScrollView
-    internal val homeRowItems = mutableListOf<List<TmdbTest.CatalogueItem>>()
-    internal var heroItem: TmdbTest.CatalogueItem? = null
+    internal val homeRowItems = mutableListOf<List<TmdbApi.CatalogueItem>>()
+    internal var heroItem: TmdbApi.CatalogueItem? = null
     internal lateinit var heroBackdrop: ImageView
     internal lateinit var heroOverline: TextView
     internal lateinit var heroTitle: TextView
@@ -60,8 +60,8 @@ class MainActivity : Activity() {
     internal var homeFocusRowName: String? = null
     internal var homeFocusIndex = 0
     internal var pendingHomeRestore = false
-    internal var cachedMovies: List<TmdbTest.CatalogueItem>? = null
-    internal var cachedShows: List<TmdbTest.CatalogueItem>? = null
+    internal var cachedMovies: List<TmdbApi.CatalogueItem>? = null
+    internal var cachedShows: List<TmdbApi.CatalogueItem>? = null
 
     internal val seasonByShow = mutableMapOf<Int, Int>()
     internal var episodeFocusIndex = -1
@@ -205,8 +205,6 @@ class MainActivity : Activity() {
     // Older code refers to these; they now come from the design system (Ui.kt).
     internal val bg = Ui.surface
     internal val accent = Ui.accent
-    internal val testUrl =
-        "https://storage.googleapis.com/exoplayer-test-media-0/BigBuckBunny_320x180.mp4"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -291,23 +289,6 @@ class MainActivity : Activity() {
         val caption: TextView,
         val width: Int
     )
-
-    // Solid buttons (Play): white ring and slight zoom when focused.
-    // Older solid buttons (Play on details pages) restyled as the primary button.
-    internal fun styleButtonFocus(button: View) {
-        val text = button as? TextView
-        text?.typeface = Ui.font("semibold")
-        val paint = { focused: Boolean ->
-            text?.setTextColor(Ui.background)
-            button.background = Ui.rounded(if (focused) Color.WHITE else Color.rgb(226, 230, 238), 12f)
-            button.animate().scaleX(if (focused) 1.06f else 1f)
-                .scaleY(if (focused) 1.06f else 1f).setDuration(140).start()
-        }
-        paint(button.isFocused)
-        button.setOnFocusChangeListener(chainFocus(button.onFocusChangeListener) { _, focused ->
-            paint(focused)
-        })
-    }
 
     // Text links ("‹ BACK TO …"): a filled pill when focused.
     // Back links ("‹ Back to Discover"): quiet text that becomes a white pill on focus.
@@ -444,7 +425,7 @@ class MainActivity : Activity() {
     internal var homeFrame: FrameLayout? = null
     internal var homeDirty = true
 
-    internal val collectionItems = java.util.IdentityHashMap<TmdbTest.CatalogueItem, Pair<NuvioCollections.Collection, NuvioCollections.Folder>>()
+    internal val collectionItems = java.util.IdentityHashMap<TmdbApi.CatalogueItem, Pair<NuvioCollections.Collection, NuvioCollections.Folder>>()
     internal var openFolder: Pair<NuvioCollections.Collection, NuvioCollections.Folder>? = null
     internal val folderCache = mutableMapOf<String, List<NuvioCollections.Loaded>>()
     internal var folderFocus: Pair<Int, Int>? = null
@@ -552,10 +533,10 @@ class MainActivity : Activity() {
 
     // Continue watching: one poster per unfinished title with a progress bar. Each becomes
     // a hero item so the hero can show it (and its Play resumes it).
-    internal val continueItems = java.util.IdentityHashMap<TmdbTest.CatalogueItem, WatchProgress.Entry>()
+    internal val continueItems = java.util.IdentityHashMap<TmdbApi.CatalogueItem, WatchProgress.Entry>()
     internal val continueBackdrops = java.util.concurrent.ConcurrentHashMap<String, String>()  // "" = none found
 
-    internal val myListItems = java.util.IdentityHashMap<TmdbTest.CatalogueItem, StremioLibrary.ListItem>()
+    internal val myListItems = java.util.IdentityHashMap<TmdbApi.CatalogueItem, StremioLibrary.ListItem>()
 
     internal val heroHandler = Handler(Looper.getMainLooper())
 
@@ -817,8 +798,6 @@ class MainActivity : Activity() {
         "https://v3-cinemeta.strem.io/manifest.json",
         "https://opensubtitles-v3.strem.io/manifest.json"
     )
-
-    internal fun playTestVideo() = startPlayback(testUrl, emptyMap())
 
     internal var reconnects = 0
     internal var lastReconnectAt = 0L

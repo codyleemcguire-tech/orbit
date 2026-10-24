@@ -125,7 +125,7 @@ internal fun MainActivity.importNuvioExportFile(): String {
 // A collection on HOME: one wide tile per folder, using Nuvio's cover image or emoji.
 internal fun MainActivity.fillCollectionRow(index: Int, collection: NuvioCollections.Collection) {
     val items = collection.folders.map { folder ->
-        TmdbTest.CatalogueItem(
+        TmdbApi.CatalogueItem(
             id = -1,
             title = folder.title.ifBlank { collection.title },
             // TMDB and Trakt sources have names; addon sources only have catalog ids.
@@ -147,7 +147,7 @@ internal fun MainActivity.fillCollectionRow(index: Int, collection: NuvioCollect
     if (heroItem == null && index == 0) showHero(items.firstOrNull(), immediate = true)
 }
 
-internal fun MainActivity.makeCollectionTile(rowIndex: Int, item: TmdbTest.CatalogueItem): View {
+internal fun MainActivity.makeCollectionTile(rowIndex: Int, item: TmdbApi.CatalogueItem): View {
     val folder = collectionItems.getValue(item).second
     return makeFolderTile(folder, item.title) { openHomeItem(item) }.also { tile ->
         tile.onFocusChangeListener = chainFocus(tile.onFocusChangeListener) { card, focused ->

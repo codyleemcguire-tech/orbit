@@ -16,6 +16,16 @@ import android.widget.TextView
 // Orbit's design system: colours, type scale, spacing and the shared building blocks.
 // "Cinema dark": near-black surfaces, one blue accent, Inter throughout, white focus rings.
 object Ui {
+
+    // A black-on-white QR code of text, size pixels square.
+    fun qrCode(text: String, size: Int): android.graphics.Bitmap {
+        val matrix = com.google.zxing.qrcode.QRCodeWriter()
+            .encode(text, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
+        val pixels = IntArray(size * size) { i ->
+            if (matrix[i % size, i / size]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+        }
+        return android.graphics.Bitmap.createBitmap(pixels, size, size, android.graphics.Bitmap.Config.RGB_565)
+    }
     // Surfaces, darkest to lightest.
     val background = Color.rgb(9, 11, 16)
     val surface = Color.rgb(19, 23, 32)
@@ -223,22 +233,6 @@ object Ui {
         )
         canvas.drawRect(0f, h / 2f, w, h, paint)
         return out
-    }
-
-    @Suppress("unused")
-    private fun legacyBackdropOverlays(context: Context, frame: FrameLayout, height: Int) {
-        frame.addView(View(context).apply {
-            background = GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Ui.background, Color.argb(225, 9, 11, 16), Color.argb(60, 9, 11, 16), 0)
-            )
-        }, FrameLayout.LayoutParams(-1, -1))
-        frame.addView(View(context).apply {
-            background = GradientDrawable(
-                GradientDrawable.Orientation.BOTTOM_TOP,
-                intArrayOf(Ui.background, Color.argb(120, 9, 11, 16), 0)
-            )
-        }, FrameLayout.LayoutParams(-1, height / 2, Gravity.BOTTOM))
     }
 
     fun formatRuntime(minutes: Int?): String? =

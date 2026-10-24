@@ -98,9 +98,9 @@ internal fun MainActivity.leaveDetails() {
 // Finds the film's IMDb id through TMDB when it wasn't opened from an addon catalog.
 internal fun MainActivity.resolveFilmImdbId(title: String): String? {
     val key = BuildConfig.TMDB_API_KEY
-    val metadata = TmdbTest.fetchMetadata(title, key) ?: return null
+    val metadata = TmdbApi.fetchMetadata(title, key) ?: return null
     if (metadata.mediaType != "movie") return null
-    return TmdbTest.fetchImdbId("movie", metadata.tmdbId, key)
+    return TmdbApi.fetchImdbId("movie", metadata.tmdbId, key)
 }
 
 internal fun MainActivity.addDetailHero(kind: String, title: String, height: Int = 800): DetailHero {
@@ -264,7 +264,7 @@ internal fun MainActivity.openTrailer(youtubeKey: String) {
 }
 
 // "More like this": TMDB recommendations, opening their own pages.
-internal fun MainActivity.addMoreLikeThis(items: List<TmdbTest.CatalogueItem>) {
+internal fun MainActivity.addMoreLikeThis(items: List<TmdbApi.CatalogueItem>) {
     if (items.isEmpty() || !tmdbSettings.moreLikeThis) return
     root.addView(Ui.sectionTitle(this, "More like this"))
     val (scroll, row) = makePosterRow()
@@ -278,7 +278,7 @@ internal fun MainActivity.addMoreLikeThis(items: List<TmdbTest.CatalogueItem>) {
     addPosterRow(scroll)
 }
 
-internal fun MainActivity.fillDetailHero(hero: DetailHero, live: TmdbTest.FilmMetadata, extraChips: List<String> = emptyList()) {
+internal fun MainActivity.fillDetailHero(hero: DetailHero, live: TmdbApi.FilmMetadata, extraChips: List<String> = emptyList()) {
     hero.chips.removeAllViews()
     (listOfNotNull(
         live.releaseYear.takeIf { it.isNotBlank() },
@@ -350,7 +350,7 @@ internal fun MainActivity.showFilmDetails(
     linkButtonRow(hero.buttons)
     addMyListButton(hero, "movie", title, posterFile, { lastFilmTmdbId ?: 0 }) {
         lastFilmImdbId?.takeIf { lastFilmTitle == title }
-            ?: lastFilmTmdbId?.let { TmdbTest.fetchImdbId("movie", it, BuildConfig.TMDB_API_KEY) }
+            ?: lastFilmTmdbId?.let { TmdbApi.fetchImdbId("movie", it, BuildConfig.TMDB_API_KEY) }
             ?: resolveFilmImdbId(title)
     }
     // Play becomes Resume once the film's id (and so its saved progress) is known.
@@ -382,7 +382,7 @@ internal fun MainActivity.showFilmDetails(
             null
         }
         val live = if (rich != null) null else try {
-            TmdbTest.fetchMetadata(title, BuildConfig.TMDB_API_KEY)
+            TmdbApi.fetchMetadata(title, BuildConfig.TMDB_API_KEY)
         } catch (_: Exception) {
             null
         }
@@ -416,7 +416,7 @@ internal fun MainActivity.showTvDetails(tvId: Int, title: String, posterPath: St
     if (!showImdbIds.containsKey(tvId)) {
         thread {
             try {
-                TmdbTest.fetchImdbId("tv", tvId, BuildConfig.TMDB_API_KEY)
+                TmdbApi.fetchImdbId("tv", tvId, BuildConfig.TMDB_API_KEY)
                     ?.let { showImdbIds[tvId] = it }
             } catch (_: Exception) {
             }
@@ -438,7 +438,7 @@ internal fun MainActivity.showTvDetails(tvId: Int, title: String, posterPath: St
     val playButton = Ui.button(this, "▶  Play", primary = true) { playFirst?.invoke() }
     hero.buttons.addView(playButton)
     addMyListButton(hero, "series", title, posterPath, { tvId }) {
-        showImdbIds[tvId] ?: TmdbTest.fetchImdbId("tv", tvId, BuildConfig.TMDB_API_KEY)?.also { showImdbIds[tvId] = it }
+        showImdbIds[tvId] ?: TmdbApi.fetchImdbId("tv", tvId, BuildConfig.TMDB_API_KEY)?.also { showImdbIds[tvId] = it }
     }
     val backButton = hero.back
 
@@ -495,7 +495,7 @@ internal fun MainActivity.showTvDetails(tvId: Int, title: String, posterPath: St
 
         thread {
             try {
-                val episodes = TmdbTest.fetchTvEpisodes(
+                val episodes = TmdbApi.fetchTvEpisodes(
                     tvId, seasonNumber, BuildConfig.TMDB_API_KEY
                 )
                 Handler(Looper.getMainLooper()).post {
@@ -517,7 +517,7 @@ internal fun MainActivity.showTvDetails(tvId: Int, title: String, posterPath: St
                             )
                             showStreams("series", label, target) {
                                 val showImdb = showImdbIds[tvId]
-                                    ?: TmdbTest.fetchImdbId(
+                                    ?: TmdbApi.fetchImdbId(
                                         "tv", tvId, BuildConfig.TMDB_API_KEY
                                     )?.also { showImdbIds[tvId] = it }
                                 showImdb?.let { "$it:$seasonNumber:${episode.episodeNumber}" }
@@ -582,8 +582,8 @@ internal fun MainActivity.showTvDetails(tvId: Int, title: String, posterPath: St
             } catch (_: Exception) {
                 null
             } else null
-            val details = rich?.metadata ?: TmdbTest.fetchMetadata(title, key)
-            val seasons = TmdbTest.fetchTvSeasons(tvId, key)
+            val details = rich?.metadata ?: TmdbApi.fetchMetadata(title, key)
+            val seasons = TmdbApi.fetchTvSeasons(tvId, key)
 
             Handler(Looper.getMainLooper()).post {
                 if (currentScreen != "tv_details" || lastFilmTitle != title) return@post
@@ -664,7 +664,7 @@ internal fun MainActivity.showTvDetails(tvId: Int, title: String, posterPath: St
 
 // Episode card: thumbnail on the left; number, runtime, title and synopsis beside it.
 internal fun MainActivity.makeEpisodeCard(
-    episode: TmdbTest.TvEpisode,
+    episode: TmdbApi.TvEpisode,
     watch: WatchProgress.Entry?,
     onClick: () -> Unit
 ): LinearLayout {
@@ -742,7 +742,7 @@ internal fun MainActivity.addCastSection(
     title: String,
     focusCastIndex: Int = -1,
     screen: String = "details",
-    source: (() -> List<TmdbTest.CastMember>?)? = null
+    source: (() -> List<TmdbApi.CastMember>?)? = null
 ): LinearLayout {
     root.addView(Ui.sectionTitle(this, "Cast"))
     val loading = Ui.text(this, Ui.Type.Label, "Loading cast...", Ui.textMuted).apply {
@@ -772,7 +772,7 @@ internal fun MainActivity.addCastSection(
     thread {
         val cast = try {
             source?.invoke()?.takeIf { it.isNotEmpty() }
-                ?: if (screen == "details") TmdbTest.fetchCast(title, BuildConfig.TMDB_API_KEY) else emptyList()
+                ?: if (screen == "details") TmdbApi.fetchCast(title, BuildConfig.TMDB_API_KEY) else emptyList()
         } catch (_: Exception) {
             null
         }
@@ -848,7 +848,7 @@ internal fun MainActivity.addCastSection(
     return castRow
 }
 
-internal fun MainActivity.openActor(member: TmdbTest.CastMember, index: Int, fromShow: Boolean) {
+internal fun MainActivity.openActor(member: TmdbApi.CastMember, index: Int, fromShow: Boolean) {
     val page = ActorPage(
         member.name, member.id, member.profilePath, lastFilmTitle, lastPosterFile, fromShow, lastTvId,
         lastFilmTmdbId, lastFilmImdbId, index, detailsReturnScreen

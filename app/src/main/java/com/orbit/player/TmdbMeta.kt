@@ -16,13 +16,13 @@ object TmdbMeta {
         val mediaType: String, // "movie" or "tv"
         val tmdbId: Int,
         val imdbId: String?,
-        val metadata: TmdbTest.FilmMetadata,
+        val metadata: TmdbApi.FilmMetadata,
         val logoPath: String?,
         val status: String,
         val studios: List<String>,
         val director: String?,
-        val cast: List<TmdbTest.CastMember>,
-        val recommendations: List<TmdbTest.CatalogueItem>,
+        val cast: List<TmdbApi.CastMember>,
+        val recommendations: List<TmdbApi.CatalogueItem>,
         val trailerKey: String? = null // YouTube video id
     )
 
@@ -72,7 +72,7 @@ object TmdbMeta {
         val date = d.optString("release_date").ifBlank { d.optString("first_air_date") }
         val runtime = if (mediaType == "movie") d.optInt("runtime", 0).takeIf { it > 0 }
             else d.optJSONArray("episode_run_time")?.optInt(0, 0)?.takeIf { it > 0 }
-        val metadata = TmdbTest.FilmMetadata(
+        val metadata = TmdbApi.FilmMetadata(
             title = d.optString("title").ifBlank { d.optString("name") },
             releaseYear = date.take(4),
             genres = names(d.optJSONArray("genres")),
@@ -95,14 +95,14 @@ object TmdbMeta {
         // Shows: the whole run's cast (aggregate_credits) rather than just the latest season's.
         val showCast = d.optJSONObject("aggregate_credits")?.optJSONArray("cast")?.let { arr ->
             (0 until minOf(arr.length(), 20)).map { arr.getJSONObject(it) }.map {
-                TmdbTest.CastMember(it.optString("name"),
+                TmdbApi.CastMember(it.optString("name"),
                     it.optJSONArray("roles")?.optJSONObject(0)?.optString("character").orEmpty(),
                     it.optString("profile_path").takeIf { p -> p.startsWith("/") }, it.optInt("id"))
             }
         }?.takeIf { it.isNotEmpty() }
         val cast = showCast ?: credits?.optJSONArray("cast")?.let { arr ->
             (0 until minOf(arr.length(), 20)).map { arr.getJSONObject(it) }.map {
-                TmdbTest.CastMember(it.optString("name"), it.optString("character"),
+                TmdbApi.CastMember(it.optString("name"), it.optString("character"),
                     it.optString("profile_path").takeIf { p -> p.startsWith("/") }, it.optInt("id"))
             }
         }.orEmpty()
@@ -112,7 +112,7 @@ object TmdbMeta {
         val recs = d.optJSONObject("recommendations")?.optJSONArray("results")?.let { arr ->
             (0 until arr.length()).map { arr.getJSONObject(it) }.mapNotNull { r ->
                 val poster = r.optString("poster_path").takeIf { it.startsWith("/") } ?: return@mapNotNull null
-                TmdbTest.CatalogueItem(
+                TmdbApi.CatalogueItem(
                     id = r.optInt("id"),
                     title = r.optString("title").ifBlank { r.optString("name") },
                     overview = r.optString("overview"),
@@ -152,8 +152,8 @@ object TmdbMeta {
         val biography: String,
         val born: String, // "Born 27 August 1979 · Emporia, Kansas, USA", or ""
         val profilePath: String?,
-        val movies: List<TmdbTest.CatalogueItem>,
-        val shows: List<TmdbTest.CatalogueItem>
+        val movies: List<TmdbApi.CatalogueItem>,
+        val shows: List<TmdbApi.CatalogueItem>
     )
 
     private val people = ConcurrentHashMap<Int, Person>()
@@ -184,7 +184,7 @@ object TmdbMeta {
             .sortedByDescending { it.optInt("vote_count") }
             .take(40)
             .map { r ->
-                TmdbTest.CatalogueItem(
+                TmdbApi.CatalogueItem(
                     id = r.optInt("id"),
                     title = r.optString("title").ifBlank { r.optString("name") },
                     overview = r.optString("overview"),

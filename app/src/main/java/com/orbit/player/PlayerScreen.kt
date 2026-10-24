@@ -545,13 +545,13 @@ internal fun MainActivity.showPlayerAction(label: String, run: () -> Unit) {
 internal fun MainActivity.findNextEpisode(id: String, target: WatchTarget): NextEpisode? = try {
     val key = BuildConfig.TMDB_API_KEY
     val showImdb = id.substringBefore(':')
-    val seasons = TmdbTest.fetchTvSeasons(target.tvId, key).filter { it.seasonNumber >= 1 }
+    val seasons = TmdbApi.fetchTvSeasons(target.tvId, key).filter { it.seasonNumber >= 1 }
     val current = seasons.firstOrNull { it.seasonNumber == target.season }
     val (season, episode) = when {
         current != null && target.episode < current.episodeCount -> target.season to target.episode + 1
         else -> seasons.firstOrNull { it.seasonNumber > target.season }?.let { it.seasonNumber to 1 }
     } ?: return null
-    val name = TmdbTest.fetchTvEpisodes(target.tvId, season, key)
+    val name = TmdbApi.fetchTvEpisodes(target.tvId, season, key)
         .firstOrNull { it.episodeNumber == episode }?.name.orEmpty()
     NextEpisode(
         target.copy(season = season, episode = episode, episodeLabel = "S$season · E$episode  $name"),

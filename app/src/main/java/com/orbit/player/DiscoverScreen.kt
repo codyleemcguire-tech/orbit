@@ -436,7 +436,7 @@ internal fun MainActivity.openMeta(meta: StremioAddons.Meta, status: TextView, f
     status.text = "Opening ${meta.name}..."
     thread {
         val tvId = try {
-            TmdbTest.findTvIdByImdb(meta.id, BuildConfig.TMDB_API_KEY)
+            TmdbApi.findTvIdByImdb(meta.id, BuildConfig.TMDB_API_KEY)
         } catch (_: Exception) {
             null
         }

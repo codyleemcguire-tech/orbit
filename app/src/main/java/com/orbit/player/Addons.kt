@@ -208,12 +208,7 @@ internal fun MainActivity.showPhoneLink(
     }
 
     val size = 520
-    val matrix = com.google.zxing.qrcode.QRCodeWriter()
-        .encode(address, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
-    val pixels = IntArray(size * size) { i ->
-        if (matrix[i % size, i / size]) Color.BLACK else Color.WHITE
-    }
-    val qr = android.graphics.Bitmap.createBitmap(pixels, size, size, android.graphics.Bitmap.Config.RGB_565)
+    val qr = Ui.qrCode(address, size)
 
     val content = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL

@@ -487,10 +487,7 @@ internal fun MainActivity.showTraktSignIn(onDone: () -> Unit) {
         try {
             val code = trakt.startSignIn()
             val size = 360
-            val matrix = com.google.zxing.qrcode.QRCodeWriter()
-                .encode(code.url, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
-            val pixels = IntArray(size * size) { i -> if (matrix[i % size, i / size]) Color.BLACK else Color.WHITE }
-            val qr = android.graphics.Bitmap.createBitmap(pixels, size, size, android.graphics.Bitmap.Config.RGB_565)
+            val qr = Ui.qrCode(code.url, size)
             main.post {
                 qrView.setImageBitmap(qr)
                 codeView.text = code.userCode

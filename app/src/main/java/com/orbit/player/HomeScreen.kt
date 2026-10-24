@@ -228,8 +228,8 @@ internal fun MainActivity.showHomeScreen() {
             "Continue shows" -> fillContinueRow(index, continueShows)
             "My List" -> fillMyListRow(index, myList)
             in collections.map { "\u0000" + it.id } -> fillCollectionRow(index, collection!!)
-            "Popular movies" -> loadHomeRow(index, "movies", cachedMovies) { TmdbTest.fetchPopularMovies(it) }
-            else -> loadHomeRow(index, "shows", cachedShows) { TmdbTest.fetchPopularTvShows(it) }
+            "Popular movies" -> loadHomeRow(index, "movies", cachedMovies) { TmdbApi.fetchPopularMovies(it) }
+            else -> loadHomeRow(index, "shows", cachedShows) { TmdbApi.fetchPopularTvShows(it) }
         }
     }
 
@@ -279,8 +279,8 @@ internal fun MainActivity.restoreHomeFocus() {
 internal fun MainActivity.loadHomeRow(
     index: Int,
     kind: String,
-    cached: List<TmdbTest.CatalogueItem>?,
-    fetch: (String) -> List<TmdbTest.CatalogueItem>
+    cached: List<TmdbApi.CatalogueItem>?,
+    fetch: (String) -> List<TmdbApi.CatalogueItem>
 ) {
     if (cached != null) {
         fillHomeItems(index, cached)
@@ -308,7 +308,7 @@ internal fun MainActivity.loadHomeRow(
     }
 }
 
-internal fun MainActivity.fillHomeItems(index: Int, items: List<TmdbTest.CatalogueItem>) {
+internal fun MainActivity.fillHomeItems(index: Int, items: List<TmdbApi.CatalogueItem>) {
     homeRowItems[index] = items
     fillHomeRow(index, items.map { item ->
         makePosterCard(item.title, item.releaseYear, item.posterPath, dimRow = false) { openHomeItem(item) }.also { card ->
@@ -328,7 +328,7 @@ internal fun MainActivity.fillHomeItems(index: Int, items: List<TmdbTest.Catalog
 internal fun MainActivity.fillContinueRow(index: Int, entries: List<WatchProgress.Entry>) {
     val items = entries.map { entry ->
         val left = ((entry.durationMs - entry.positionMs) / 60_000).coerceAtLeast(1)
-        TmdbTest.CatalogueItem(
+        TmdbApi.CatalogueItem(
             id = entry.tvId,
             title = entry.title,
             overview = listOf(
@@ -346,7 +346,7 @@ internal fun MainActivity.fillContinueRow(index: Int, entries: List<WatchProgres
     if (missing.isNotEmpty()) thread {
         missing.forEach { title ->
             val path = try {
-                TmdbTest.fetchMetadata(title, BuildConfig.TMDB_API_KEY)?.backdropPath
+                TmdbApi.fetchMetadata(title, BuildConfig.TMDB_API_KEY)?.backdropPath
             } catch (_: Exception) {
                 null
             }
@@ -451,7 +451,7 @@ internal fun MainActivity.resumeEntry(entry: WatchProgress.Entry) {
     }
 }
 
-internal fun MainActivity.openHomeItem(item: TmdbTest.CatalogueItem) {
+internal fun MainActivity.openHomeItem(item: TmdbApi.CatalogueItem) {
     collectionItems[item]?.let { (collection, folder) ->
         showFolderScreen(collection, folder)
         return
@@ -473,7 +473,7 @@ internal fun MainActivity.openHomeItem(item: TmdbTest.CatalogueItem) {
 
 internal fun MainActivity.fillMyListRow(index: Int, list: List<StremioLibrary.ListItem>) {
     val items = list.map { saved ->
-        TmdbTest.CatalogueItem(
+        TmdbApi.CatalogueItem(
             id = saved.tmdbId,
             title = saved.name,
             overview = "",
@@ -501,7 +501,7 @@ internal fun MainActivity.openListItem(saved: StremioLibrary.ListItem) {
     }
     thread {
         val tvId = try {
-            TmdbTest.findTvIdByImdb(saved.id, BuildConfig.TMDB_API_KEY)
+            TmdbApi.findTvIdByImdb(saved.id, BuildConfig.TMDB_API_KEY)
         } catch (_: Exception) {
             null
         }
@@ -514,7 +514,7 @@ internal fun MainActivity.openListItem(saved: StremioLibrary.ListItem) {
 }
 
 // Play on the hero: a film goes straight to its streams; a series opens its episodes.
-internal fun MainActivity.playHeroItem(item: TmdbTest.CatalogueItem) {
+internal fun MainActivity.playHeroItem(item: TmdbApi.CatalogueItem) {
     collectionItems[item]?.let { (collection, folder) ->
         showFolderScreen(collection, folder)
         return
@@ -531,12 +531,12 @@ internal fun MainActivity.playHeroItem(item: TmdbTest.CatalogueItem) {
     lastPosterFile = item.posterPath.orEmpty()
     lastFilmImdbId = null
     showStreams("movie", item.title, WatchTarget("movie", item.title, poster = item.posterPath.orEmpty())) {
-        TmdbTest.fetchImdbId("movie", item.id, BuildConfig.TMDB_API_KEY)
+        TmdbApi.fetchImdbId("movie", item.id, BuildConfig.TMDB_API_KEY)
     }
 }
 
 // Waits ~350 ms so moving quickly along a row doesn't load every backdrop on the way.
-internal fun MainActivity.showHero(item: TmdbTest.CatalogueItem?, immediate: Boolean = false) {
+internal fun MainActivity.showHero(item: TmdbApi.CatalogueItem?, immediate: Boolean = false) {
     heroHandler.removeCallbacksAndMessages(null)
     val apply = {
         if (currentScreen == "home") {

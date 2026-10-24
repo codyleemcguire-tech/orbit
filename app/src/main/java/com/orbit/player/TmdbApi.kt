@@ -4,44 +4,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
 
-object TmdbTest {
-    fun fetchInterstellar(apiKey: String): String {
-        val encodedKey = java.net.URLEncoder.encode(apiKey, "UTF-8")
-        val url = URL(
-            "https://api.themoviedb.org/3/search/movie?query=Interstellar&api_key=$encodedKey"
-        )
-        val connection = url.openConnection() as HttpURLConnection
-
-        return try {
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("Accept", "application/json")
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
-
-            val status = connection.responseCode
-            val stream = if (status in 200..299) {
-                connection.inputStream
-            } else {
-                connection.errorStream
-            }
-
-            val body = stream.bufferedReader().use { it.readText() }
-
-            if (status !in 200..299) {
-                "TMDB HTTP $status"
-            } else {
-                val results = JSONObject(body).getJSONArray("results")
-                if (results.length() == 0) {
-                    "TMDB connected, but no film results returned."
-                } else {
-                    val film = results.getJSONObject(0)
-                    "TMDB OK: ${film.optString("title")} (${film.optString("release_date")})"
-                }
-            }
-        } finally {
-            connection.disconnect()
-        }
-    }
+// TMDB requests used across Orbit: popular titles, film and show details, seasons and episodes.
+object TmdbApi {
 
     data class CatalogueItem(
         val id: Int,
@@ -326,83 +290,6 @@ object TmdbTest {
             )
         }
     }
-
-    fun fetchActorProfile(actorName: String, apiKey: String): Pair<String, String> {
-        fun getJson(path: String): JSONObject {
-            val url = URL("https://api.themoviedb.org/3/$path")
-            val connection = url.openConnection() as HttpURLConnection
-            try {
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("Accept", "application/json")
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
-
-                val status = connection.responseCode
-                val stream = if (status in 200..299) {
-                    connection.inputStream
-                } else {
-                    connection.errorStream
-                }
-                val body = stream.bufferedReader().use { it.readText() }
-                if (status !in 200..299) {
-                    throw IllegalStateException("TMDB HTTP $status")
-                }
-                return JSONObject(body)
-            } finally {
-                connection.disconnect()
-            }
-        }
-
-        val key = java.net.URLEncoder.encode(apiKey, "UTF-8")
-        val query = java.net.URLEncoder.encode(actorName, "UTF-8")
-        val search = getJson("search/person?query=$query&api_key=$key")
-        val results = search.getJSONArray("results")
-        if (results.length() == 0) return Pair("", "")
-
-        val person = (0 until results.length())
-            .map { results.getJSONObject(it) }
-            .firstOrNull {
-                it.optString("name").equals(actorName, ignoreCase = true)
-            } ?: results.getJSONObject(0)
-
-        val personId = person.getInt("id")
-        val details = getJson("person/$personId?api_key=$key")
-        val credits = getJson("person/$personId/combined_credits?api_key=$key")
-        val castCredits = credits.optJSONArray("cast")
-
-        val titles = if (castCredits == null) {
-            emptyList()
-        } else {
-            (0 until castCredits.length())
-                .map { castCredits.getJSONObject(it) }
-                .sortedByDescending {
-                    it.optString("release_date").ifBlank {
-                        it.optString("first_air_date")
-                    }
-                }
-                .distinctBy {
-                    it.optString("title").ifBlank { it.optString("name") }
-                }
-                .take(8)
-                .map {
-                    val title = it.optString("title").ifBlank {
-                        it.optString("name")
-                    }
-                    val date = it.optString("release_date").ifBlank {
-                        it.optString("first_air_date")
-                    }
-                    val year = date.takeIf { d -> d.length >= 4 }?.take(4).orEmpty()
-                    if (year.isBlank()) title else "$title ($year)"
-                }
-        }
-
-        return Pair(
-            details.optString("biography"),
-            titles.joinToString("\n")
-        )
-    }
-
-
 
     data class TvSeason(
         val seasonNumber: Int,
