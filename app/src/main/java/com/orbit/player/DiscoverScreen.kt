@@ -75,7 +75,8 @@ internal fun MainActivity.showDiscoverScreen() {
     typePicker = makePicker { chooseDiscoverType() }
     catalogPicker = makePicker { chooseDiscoverCatalog() }
     genrePicker = makePicker { chooseDiscoverGenre() }
-    listOf(typePicker, catalogPicker, genrePicker).forEach {
+    sortPicker = makePicker { chooseDiscoverSort() }
+    listOf(typePicker, catalogPicker, genrePicker, sortPicker).forEach {
         it.id = View.generateViewId()
         pickers.addView(it, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = 18 })
     }
@@ -295,6 +296,8 @@ internal fun MainActivity.updatePickerLabels() {
         ?: if (discoverCatalogs == null) "Loading..." else "No catalogs") + "   ▾"
     genrePicker.text = (discoverGenre ?: "All genres") + "   ▾"
     genrePicker.visibility = if (catalog?.genres.isNullOrEmpty()) View.GONE else View.VISIBLE
+    sortPicker.text = (if (discoverSort == "top") "Top rated" else "Popular") + "   ▾"
+    sortPicker.visibility = if (catalog != null && OrbitCatalogs.sortable(catalog)) View.VISIBLE else View.GONE
 }
 
 internal fun MainActivity.chooseDiscoverType() {
@@ -318,6 +321,16 @@ internal fun MainActivity.chooseDiscoverCatalog() {
         options.map(::catalogLabel),
         options.indexOfFirst { it.key == discoverCatalogKey }
     ) { i -> selectDiscoverCatalog(options[i]) }
+}
+
+internal fun MainActivity.chooseDiscoverSort() {
+    val keys = listOf("popular", "top")
+    choose("Sort", listOf("Popular", "Top rated"), keys.indexOf(discoverSort)) { i ->
+        if (keys[i] == discoverSort) return@choose
+        discoverSort = keys[i]
+        updatePickerLabels()
+        fetchDiscoverPage(reset = true)
+    }
 }
 
 internal fun MainActivity.chooseDiscoverGenre() {
@@ -404,12 +417,13 @@ internal fun MainActivity.fetchDiscoverPage(reset: Boolean) {
     discoverLoading = true
     val request = discoverRequest
     val genre = discoverGenre
+    val sort = discoverSort
     val skip = discoverOffset
     discoverStatus.text = if (reset) "Loading..." else ""
 
     thread {
         val page = try {
-            StremioAddons.fetchCatalogPage(catalog, genre, skip)
+            StremioAddons.fetchCatalogPage(catalog, genre, skip, sort = sort)
         } catch (_: Exception) {
             null
         }

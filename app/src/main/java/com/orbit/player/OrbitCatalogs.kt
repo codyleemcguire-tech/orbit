@@ -178,7 +178,11 @@ object OrbitCatalogs {
             listOfNotNull(if (type == "movie") c("collections", "Collections", emptyList()) else null)
     }
 
-    fun page(catalog: StremioAddons.Catalog, pick: String?, skip: Int, key: String): StremioAddons.Page {
+    // Lists that the Discover sort picker (Popular / Top rated) applies to.
+    fun sortable(catalog: StremioAddons.Catalog) = catalog.baseUrl == base &&
+        (catalog.id in setOf("popular", "new", "service", "language") || catalog.id.startsWith("decade:"))
+
+    fun page(catalog: StremioAddons.Catalog, pick: String?, skip: Int, key: String, sort: String? = null): StremioAddons.Page {
         // Collections: franchise posters, 20 at a time; an opened one lists its films.
         if (catalog.id == "collections") {
             if (collectionOrder.size < skip + 20) findMoreCollections(skip + 20, key)
@@ -241,6 +245,17 @@ object OrbitCatalogs {
                 val code = languages[pick] ?: languages.values.first()
                 params += listOf("sort_by=popularity.desc", "with_original_language=$code", "vote_count.gte=2")
             }
+        }
+        // Top rated: by score, with enough votes that the score means something (a film with
+        // two 10/10 votes doesn't top the list), still deep enough to scroll on.
+        if (sort == "top" && sortable(catalog)) {
+            params.removeAll { it.startsWith("sort_by=") || it.startsWith("vote_count.gte=") }
+            val oldDecade = catalog.id == "decade:1970" || catalog.id == "decade:1900"
+            params += listOf("sort_by=vote_average.desc", "vote_count.gte=${when {
+                catalog.id == "new" -> 20
+                tv -> if (oldDecade) 60 else 150
+                else -> if (oldDecade) 150 else 300
+            }}")
         }
         if (genreId != null && path.startsWith("discover")) params += "with_genres=$genreId"
         // Hidden gems without a genre: concert films and documentaries crowd the top otherwise.

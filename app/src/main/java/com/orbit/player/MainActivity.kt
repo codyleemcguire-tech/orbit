@@ -203,6 +203,9 @@ class MainActivity : Activity() {
     internal lateinit var typePicker: TextView
     internal lateinit var catalogPicker: TextView
     internal lateinit var genrePicker: TextView
+    // Popular or Top rated, for Orbit's lists that can be sorted (see OrbitCatalogs.sortable).
+    internal lateinit var sortPicker: TextView
+    internal var discoverSort = "popular"
 
     // Older code refers to these; they now come from the design system (Ui.kt).
     internal val bg = Ui.surface
@@ -614,8 +617,10 @@ class MainActivity : Activity() {
             card.nextFocusUpId = when {
                 index >= discoverColumns -> View.NO_ID
                 column == 0 -> typePicker.id
-                column == 1 || genrePicker.visibility != View.VISIBLE -> catalogPicker.id
-                else -> genrePicker.id
+                column == 1 || genrePicker.visibility != View.VISIBLE && sortPicker.visibility != View.VISIBLE -> catalogPicker.id
+                column >= 3 && sortPicker.visibility == View.VISIBLE -> sortPicker.id
+                genrePicker.visibility == View.VISIBLE -> genrePicker.id
+                else -> sortPicker.id
             }
 
             if (index == pendingDiscoverFocus) {
