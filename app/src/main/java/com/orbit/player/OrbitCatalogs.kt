@@ -120,6 +120,41 @@ object OrbitCatalogs {
         }
     }
 
+    // Collections in the order Discover shows them: the chosen ones, then more found from
+    // TMDB's most-voted films (each film's details say which collection it's in), a page of
+    // films at a time as the viewer scrolls, so the list goes on.
+    private val collectionOrder = java.util.Collections.synchronizedList(collectionIds.toMutableList())
+    @Volatile private var filmPagesScanned = 0
+    private val scanLock = Any()
+
+    private fun findMoreCollections(want: Int, key: String) = synchronized(scanLock) {
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(8)
+        try {
+            while (collectionOrder.size < want && filmPagesScanned < 500) {
+                filmPagesScanned++
+                val films = get("discover/movie?sort_by=vote_count.desc&page=$filmPagesScanned&include_adult=false", key)
+                    .optJSONArray("results") ?: break
+                val ids = (0 until films.length()).mapNotNull { films.optJSONObject(it)?.optInt("id")?.takeIf { id -> id > 0 } }
+                val found = ids.map { id ->
+                    pool.submit<Int?> {
+                        try {
+                            get("movie/$id?language=en-GB", key).optJSONObject("belongs_to_collection")?.optInt("id")?.takeIf { it > 0 }
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                }.mapNotNull { it.get() }.distinct().filter { it !in collectionOrder }
+                // Only real franchises: two or more films and artwork (checked here, so every
+                // page of the catalog is full and Discover's paging stays in step).
+                found.map { id -> pool.submit<Int?> { collection(id, key)?.takeIf { it.poster != null && it.parts.size >= 2 }?.id } }
+                    .mapNotNull { it.get() }
+                    .forEach { if (it !in collectionOrder) collectionOrder.add(it) }
+            }
+        } finally {
+            pool.shutdown()
+        }
+    }
+
     // The catalog shown when a collection is opened in Discover.
     fun collectionCatalog(id: Int, name: String) =
         StremioAddons.Catalog("$base|movie|collection:$id", addonName, base, "collection:$id", name, "movie", emptyList(), false, false)
@@ -146,11 +181,12 @@ object OrbitCatalogs {
     fun page(catalog: StremioAddons.Catalog, pick: String?, skip: Int, key: String): StremioAddons.Page {
         // Collections: franchise posters, 20 at a time; an opened one lists its films.
         if (catalog.id == "collections") {
-            val slice = collectionIds.drop(skip).take(20)
+            if (collectionOrder.size < skip + 20) findMoreCollections(skip + 20, key)
+            val slice = collectionOrder.toList().drop(skip).take(20)
             val pool = java.util.concurrent.Executors.newFixedThreadPool(6)
             val found = slice.map { id -> pool.submit<Collection?> { collection(id, key) } }.mapNotNull { it.get() }
             pool.shutdown()
-            val metas = found.filter { it.poster != null }.map { c ->
+            val metas = found.map { c ->
                 val years = c.parts.mapNotNull { it.year.toIntOrNull() }
                 StremioAddons.Meta(
                     id = "tmdbcol:${c.id}", type = "movie", name = c.name, poster = c.poster,
@@ -159,7 +195,7 @@ object OrbitCatalogs {
                     rating = "", genres = listOf("${c.parts.size} films"), background = c.backdrop
                 )
             }
-            return StremioAddons.Page(metas, skip + 20 < collectionIds.size)
+            return StremioAddons.Page(metas, slice.isNotEmpty() && (collectionOrder.size > skip + 20 || filmPagesScanned < 500))
         }
         if (catalog.id.startsWith("collection:")) {
             val c = collection(catalog.id.removePrefix("collection:").toInt(), key)

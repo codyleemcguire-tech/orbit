@@ -813,6 +813,8 @@ class MainActivity : Activity() {
     internal var autoPlayStarted = false
     // In Discover, the catalog a collection was opened from (Back returns to it).
     internal var discoverCollectionFrom: String? = null
+    // A collection opened from Search before Discover's catalogs had loaded.
+    internal var discoverPendingCatalog: StremioAddons.Catalog? = null
 
     internal var onboarding = false
 

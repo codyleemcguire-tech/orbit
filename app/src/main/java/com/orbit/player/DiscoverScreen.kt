@@ -265,9 +265,18 @@ internal fun MainActivity.showDiscoverInfo(meta: StremioAddons.Meta, immediate: 
     if (immediate) apply() else infoHandler.postDelayed({ apply() }, 300)
 }
 
+// A TMDB collection's id, from Orbit's Collections ("tmdbcol:119") or the TMDB Collections
+// addon ("ctmdb.119"); null for anything else.
+internal fun collectionIdOf(id: String): Int? = when {
+    id.startsWith("tmdbcol:") -> id.removePrefix("tmdbcol:").toIntOrNull()
+    id.startsWith("ctmdb.") -> id.removePrefix("ctmdb.").toIntOrNull()
+    else -> null
+}
+
 internal fun MainActivity.typeLabel(type: String) = when (type) {
     "movie" -> "Movies"
     "series" -> "Series"
+    "collections", "collection" -> "Collections"
     else -> type.replaceFirstChar { it.uppercase() }
 }
 
@@ -357,8 +366,10 @@ internal fun MainActivity.loadDiscoverCatalogs() {
         val catalogs = own + StremioAddons.fetchCatalogs()
         Handler(Looper.getMainLooper()).post {
             if (request != discoverRequest) return@post
-            discoverCatalogs = catalogs
-            val first = catalogs.firstOrNull { it.type == discoverType } ?: catalogs.firstOrNull()
+            val pending = discoverPendingCatalog
+            discoverPendingCatalog = null
+            discoverCatalogs = catalogs + listOfNotNull(pending)
+            val first = pending ?: catalogs.firstOrNull { it.type == discoverType } ?: catalogs.firstOrNull()
             if (first == null) {
                 updatePickerLabels()
                 discoverStatus.text = when {
@@ -441,8 +452,9 @@ internal fun MainActivity.openDiscoverItem(index: Int) {
     val meta = discoverResults.getOrNull(index) ?: return
     discoverFocusIndex = index
     // A collection (franchise): Discover lists its films; Back returns to the collections.
-    if (meta.id.startsWith("tmdbcol:")) {
-        val catalog = OrbitCatalogs.collectionCatalog(meta.id.removePrefix("tmdbcol:").toInt(), meta.name)
+    val collectionId = collectionIdOf(meta.id)
+    if (collectionId != null) {
+        val catalog = OrbitCatalogs.collectionCatalog(collectionId, meta.name)
         discoverCatalogs = discoverCatalogs.orEmpty().filterNot { it.id.startsWith("collection:") } + catalog
         if (discoverCollectionFrom == null) discoverCollectionFrom = discoverCatalogKey
         selectDiscoverCatalog(catalog)
@@ -454,6 +466,20 @@ internal fun MainActivity.openDiscoverItem(index: Int) {
 // Opens an addon catalog item: films straight to their page; series need TMDB's id,
 // which some addons give directly and the rest are looked up from the IMDb id.
 internal fun MainActivity.openMeta(meta: StremioAddons.Meta, status: TextView, fromScreen: String) {
+    collectionIdOf(meta.id)?.let { id ->
+        val catalog = OrbitCatalogs.collectionCatalog(id, meta.name)
+        discoverCollectionFrom = null
+        if (discoverCatalogs == null) {
+            // Discover's catalogs are still to load; it opens this once they have.
+            discoverPendingCatalog = catalog
+            showDiscoverScreen()
+            return
+        }
+        showDiscoverScreen()
+        discoverCatalogs = discoverCatalogs.orEmpty().filterNot { it.id.startsWith("collection:") } + catalog
+        selectDiscoverCatalog(catalog)
+        return
+    }
     if (meta.type != "series") {
         showFilmDetails(
             meta.name, meta.poster.orEmpty(), imdbId = meta.id.takeIf { it.startsWith("tt") },
