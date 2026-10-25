@@ -23,7 +23,10 @@ object TmdbMeta {
         val director: String?,
         val cast: List<TmdbApi.CastMember>,
         val recommendations: List<TmdbApi.CatalogueItem>,
-        val trailerKey: String? = null // YouTube video id
+        val trailerKey: String? = null, // YouTube video id
+        // The film's TMDB collection (franchise), if it's part of one.
+        val collectionId: Int = 0,
+        val collectionName: String = ""
     )
 
     private val cache = ConcurrentHashMap<String, Details>()
@@ -142,7 +145,9 @@ object TmdbMeta {
             ?: videos.firstOrNull { it.optString("type") == "Teaser" }
             // Some only list it as a clip named "Trailer".
             ?: videos.firstOrNull { it.optString("name").contains("trailer", true) })?.optString("key")
-        return Details(mediaType, tmdbId, imdb, metadata, logo, status, studios, director, cast, recs, trailer)
+        val collection = d.optJSONObject("belongs_to_collection")
+        return Details(mediaType, tmdbId, imdb, metadata, logo, status, studios, director, cast, recs, trailer,
+            collection?.optInt("id") ?: 0, collection?.optString("name").orEmpty())
             .also { cache[cacheKey] = it }
     }
 

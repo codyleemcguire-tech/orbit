@@ -811,6 +811,8 @@ class MainActivity : Activity() {
     internal var playingSubtitlesFound: List<StremioSubtitles.Subtitle> = emptyList()
     // Auto-play or the last-used source has already started for this sources page.
     internal var autoPlayStarted = false
+    // In Discover, the catalog a collection was opened from (Back returns to it).
+    internal var discoverCollectionFrom: String? = null
 
     internal var onboarding = false
 
@@ -900,7 +902,8 @@ class MainActivity : Activity() {
             "transfer" -> leaveTransfer()
             "streams" -> leaveStreams()
             "details", "tv_details" -> leaveDetails()
-            "discover", "search", "settings", "collection" -> showHomeScreen()
+            "discover" -> if (!leaveDiscoverCollection()) showHomeScreen()
+            "search", "settings", "collection" -> showHomeScreen()
             else -> super.onBackPressed()
         }
     }

@@ -327,7 +327,17 @@ internal fun MainActivity.chooseDiscoverGenre() {
     }
 }
 
+// Back from a collection's films to the Collections catalog (true when that happened).
+internal fun MainActivity.leaveDiscoverCollection(): Boolean {
+    val from = discoverCollectionFrom ?: return false
+    discoverCollectionFrom = null
+    discoverCatalogs?.firstOrNull { it.key == from }?.let { selectDiscoverCatalog(it) } ?: return false
+    return true
+}
+
 internal fun MainActivity.selectDiscoverCatalog(catalog: StremioAddons.Catalog) {
+    // Picking another catalog from the picker leaves the collection.
+    if (!catalog.id.startsWith("collection:")) discoverCollectionFrom = null
     discoverCatalogKey = catalog.key
     discoverType = catalog.type
     // Some catalogs (e.g. "New", by year) can't be listed without a genre.
@@ -430,6 +440,14 @@ internal fun MainActivity.appendDiscoverCards(start: Int) {
 internal fun MainActivity.openDiscoverItem(index: Int) {
     val meta = discoverResults.getOrNull(index) ?: return
     discoverFocusIndex = index
+    // A collection (franchise): Discover lists its films; Back returns to the collections.
+    if (meta.id.startsWith("tmdbcol:")) {
+        val catalog = OrbitCatalogs.collectionCatalog(meta.id.removePrefix("tmdbcol:").toInt(), meta.name)
+        discoverCatalogs = discoverCatalogs.orEmpty().filterNot { it.id.startsWith("collection:") } + catalog
+        if (discoverCollectionFrom == null) discoverCollectionFrom = discoverCatalogKey
+        selectDiscoverCatalog(catalog)
+        return
+    }
     openMeta(meta, discoverStatus, "discover")
 }
 

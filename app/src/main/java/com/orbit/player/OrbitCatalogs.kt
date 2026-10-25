@@ -78,6 +78,52 @@ object OrbitCatalogs {
 
     private val decades = listOf(2020, 2010, 2000, 1990, 1980, 1970)
 
+    // Franchises for the Collections catalog (TMDB collection ids, checked 2026-10-25). TMDB
+    // has no list of popular collections, so these are chosen; a film page shows its own.
+    private val collectionIds = listOf(
+        1241, 10, 119, 121938, 645, 86311, 531241, 556, 125574, 263, 9485, 87359, 328, 404609,
+        10194, 295, 84, 264, 8091, 135416, 528, 2344, 1575, 131635, 33514, 2150, 86066, 8354, 8650,
+        748, 448150, 284433, 131295, 131292, 131296, 173710, 1709, 726871, 87096, 8945, 115575,
+        230, 31562, 1570, 945, 86055, 304, 77816, 89137, 386382, 420, 2980, 8580, 422837, 9743,
+        91361, 656, 313086, 2602, 8864, 10455, 41437
+    )
+
+    // Collections by id, once fetched: name, poster, backdrop, overview and its films.
+    data class Collection(val id: Int, val name: String, val poster: String?, val backdrop: String?,
+                          val overview: String, val parts: List<StremioAddons.Meta>)
+    private val collections = java.util.concurrent.ConcurrentHashMap<Int, Collection>()
+
+    // A TMDB collection and its films in release order (films not yet out last). Off the main thread.
+    fun collection(id: Int, key: String): Collection? {
+        collections[id]?.let { return it }
+        return try {
+            val d = get("collection/$id?language=en-GB", key)
+            val names = movieGenres.entries.associate { (k, v) -> v to k }
+            val parts = (0 until (d.optJSONArray("parts")?.length() ?: 0)).mapNotNull { d.optJSONArray("parts")!!.optJSONObject(it) }
+                .filter { it.optString("poster_path").startsWith("/") }
+                .sortedBy { it.optString("release_date").ifBlank { "9999" } }
+                .map { r ->
+                    StremioAddons.Meta(
+                        id = "tmdb:${r.optInt("id")}", type = "movie", name = r.optString("title"),
+                        poster = r.optString("poster_path"), year = r.optString("release_date").take(4),
+                        description = r.optString("overview"),
+                        rating = r.optDouble("vote_average", 0.0).takeIf { it > 0 }?.let { String.format(Locale.US, "%.1f", it) }.orEmpty(),
+                        genres = r.optJSONArray("genre_ids")?.let { arr -> (0 until arr.length()).mapNotNull { names[arr.optInt(it)] } }.orEmpty(),
+                        background = r.optString("backdrop_path").takeIf { it.startsWith("/") }
+                    )
+                }
+            Collection(id, d.optString("name"), d.optString("poster_path").takeIf { it.startsWith("/") },
+                d.optString("backdrop_path").takeIf { it.startsWith("/") }, d.optString("overview"), parts)
+                .also { collections[id] = it }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    // The catalog shown when a collection is opened in Discover.
+    fun collectionCatalog(id: Int, name: String) =
+        StremioAddons.Catalog("$base|movie|collection:$id", addonName, base, "collection:$id", name, "movie", emptyList(), false, false)
+
     // The catalogs, for movies then series; Discover lists them before the addons' own.
     // Call off the main thread (the services list comes from TMDB).
     fun catalogs(key: String): List<StremioAddons.Catalog> = listOf("movie", "series").flatMap { type ->
@@ -93,10 +139,33 @@ object OrbitCatalogs {
         ) + decades.map { c("decade:$it", "${it}s") } +
             c("decade:1900", "Classics (before 1970)") +
             c("service", "Streaming on", services(type, key).keys.toList(), required = true) +
-            c("language", "World cinema", languages.keys.toList(), required = true)
+            c("language", "World cinema", languages.keys.toList(), required = true) +
+            listOfNotNull(if (type == "movie") c("collections", "Collections", emptyList()) else null)
     }
 
     fun page(catalog: StremioAddons.Catalog, pick: String?, skip: Int, key: String): StremioAddons.Page {
+        // Collections: franchise posters, 20 at a time; an opened one lists its films.
+        if (catalog.id == "collections") {
+            val slice = collectionIds.drop(skip).take(20)
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(6)
+            val found = slice.map { id -> pool.submit<Collection?> { collection(id, key) } }.mapNotNull { it.get() }
+            pool.shutdown()
+            val metas = found.filter { it.poster != null }.map { c ->
+                val years = c.parts.mapNotNull { it.year.toIntOrNull() }
+                StremioAddons.Meta(
+                    id = "tmdbcol:${c.id}", type = "movie", name = c.name, poster = c.poster,
+                    year = if (years.isEmpty()) "" else if (years.min() == years.max()) "${years.min()}" else "${years.min()}–${years.max()}",
+                    description = c.overview.ifBlank { "${c.parts.size} films" },
+                    rating = "", genres = listOf("${c.parts.size} films"), background = c.backdrop
+                )
+            }
+            return StremioAddons.Page(metas, skip + 20 < collectionIds.size)
+        }
+        if (catalog.id.startsWith("collection:")) {
+            val c = collection(catalog.id.removePrefix("collection:").toInt(), key)
+                ?: throw IllegalStateException("Couldn't load the collection")
+            return StremioAddons.Page(if (skip == 0) c.parts else emptyList(), false)
+        }
         val type = catalog.type
         val tv = type == "series"
         val kind = if (tv) "tv" else "movie"

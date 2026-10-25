@@ -264,6 +264,32 @@ internal fun MainActivity.openTrailer(youtubeKey: String) {
 }
 
 // "More like this": TMDB recommendations, opening their own pages.
+// "Harry Potter Collection": every film in the franchise, in order, this one marked. The row
+// is placed now and filled when TMDB answers, so it stays above More like this.
+internal fun MainActivity.addCollectionRow(details: TmdbMeta.Details) {
+    if (details.collectionId <= 0) return
+    val holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    root.addView(holder, LinearLayout.LayoutParams(-1, -2))
+    val title = lastFilmTitle
+    thread {
+        val c = OrbitCatalogs.collection(details.collectionId, BuildConfig.TMDB_API_KEY)
+        Handler(Looper.getMainLooper()).post {
+            if (c == null || c.parts.size < 2 || currentScreen != "details" || lastFilmTitle != title) return@post
+            holder.addView(Ui.sectionTitle(this, c.name))
+            val (scroll, row) = makePosterRow()
+            c.parts.forEach { film ->
+                val id = film.id.removePrefix("tmdb:").toIntOrNull() ?: return@forEach
+                val here = id == details.tmdbId
+                row.addView(makePosterCard(film.name, if (here) "This film" else film.year, film.poster, dimRow = false) {
+                    if (!here) showFilmDetails(film.name, film.poster.orEmpty(), tmdbId = id)
+                }, LinearLayout.LayoutParams(190, -2).apply { setMargins(0, 0, 26, 0) })
+            }
+            pinRowEnds(row)
+            addPosterRow(scroll, into = holder)
+        }
+    }
+}
+
 internal fun MainActivity.addMoreLikeThis(items: List<TmdbApi.CatalogueItem>) {
     if (items.isEmpty() || !tmdbSettings.moreLikeThis) return
     root.addView(Ui.sectionTitle(this, "More like this"))
@@ -399,6 +425,7 @@ internal fun MainActivity.showFilmDetails(
                         showResume()
                     }
                     lastFilmTmdbId = rich.tmdbId
+                    addCollectionRow(rich)
                     addMoreLikeThis(rich.recommendations)
                 }
                 live != null -> fillDetailHero(hero, live)
