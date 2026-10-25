@@ -33,12 +33,42 @@ object OrbitCatalogs {
     )
     private fun genres(type: String) = if (type == "movie") movieGenres else tvGenres
 
-    // Streaming services by TMDB provider id (the ones TMDB lists for most countries).
-    private val services = linkedMapOf(
+    // Used when TMDB's list of the country's services can't be fetched.
+    private val fallbackServices = linkedMapOf(
         "Netflix" to 8, "Prime Video" to 9, "Disney+" to 337, "Apple TV+" to 350, "Max" to 1899,
         "Paramount+" to 531, "Hulu" to 15, "Peacock" to 386, "NOW" to 39, "Sky Go" to 29,
         "BBC iPlayer" to 38, "ITVX" to 41, "Channel 4" to 103, "Crunchyroll" to 283, "MUBI" to 11
     )
+
+    // The streaming services in the viewer's country, in TMDB's order for it (most watched
+    // first): shops, rentals and the "Amazon Channel"-style duplicates left out, so each is a
+    // service with something to watch. Fetched once per country and type.
+    private val serviceCache = java.util.concurrent.ConcurrentHashMap<String, LinkedHashMap<String, Int>>()
+    private val notAService = Regex(
+        "store|amazon video|channel$|amazon channel|apple tv channel|roku premium|justwatch|rakuten|google play|" +
+            "youtube|microsoft|kids|with ads|vudu|fandango|plex channel|chili|sky store|kino|buy|rent",
+        RegexOption.IGNORE_CASE
+    )
+
+    private fun region() = Locale.getDefault().country.ifBlank { "GB" }
+
+    private fun services(type: String, key: String): LinkedHashMap<String, Int> {
+        val kind = if (type == "series") "tv" else "movie"
+        val region = region()
+        return serviceCache.getOrPut("$region|$kind") {
+            try {
+                val results = get("watch/providers/$kind?watch_region=$region", key).optJSONArray("results")
+                val found = (0 until (results?.length() ?: 0)).mapNotNull { results!!.optJSONObject(it) }
+                    .filter { !notAService.containsMatchIn(it.optString("provider_name")) }
+                    .sortedBy { it.optJSONObject("display_priorities")?.optInt(region, 999) ?: it.optInt("display_priority", 999) }
+                    .take(24)
+                LinkedHashMap(found.associate { it.optString("provider_name") to it.optInt("provider_id") })
+                    .takeIf { it.isNotEmpty() } ?: fallbackServices
+            } catch (_: Exception) {
+                return fallbackServices
+            }
+        }
+    }
 
     private val languages = linkedMapOf(
         "Korean" to "ko", "Japanese" to "ja", "French" to "fr", "Spanish" to "es", "Hindi" to "hi",
@@ -49,7 +79,8 @@ object OrbitCatalogs {
     private val decades = listOf(2020, 2010, 2000, 1990, 1980, 1970)
 
     // The catalogs, for movies then series; Discover lists them before the addons' own.
-    fun catalogs(): List<StremioAddons.Catalog> = listOf("movie", "series").flatMap { type ->
+    // Call off the main thread (the services list comes from TMDB).
+    fun catalogs(key: String): List<StremioAddons.Catalog> = listOf("movie", "series").flatMap { type ->
         val g = genres(type).keys.toList()
         fun c(id: String, name: String, picks: List<String> = g, required: Boolean = false) =
             StremioAddons.Catalog("$base|$type|$id", addonName, base, id, name, type, picks, required, true)
@@ -61,7 +92,7 @@ object OrbitCatalogs {
             c("gems", "Hidden gems")
         ) + decades.map { c("decade:$it", "${it}s") } +
             c("decade:1900", "Classics (before 1970)") +
-            c("service", "Streaming on", services.keys.toList(), required = true) +
+            c("service", "Streaming on", services(type, key).keys.toList(), required = true) +
             c("language", "World cinema", languages.keys.toList(), required = true)
     }
 
@@ -72,7 +103,7 @@ object OrbitCatalogs {
         val pageNo = skip / 20 + 1
         val dateField = if (tv) "first_air_date" else "primary_release_date"
         val today = String.format(Locale.US, "%tF", Calendar.getInstance())
-        val region = Locale.getDefault().country.ifBlank { "GB" }
+        val region = region()
         val params = mutableListOf("page=$pageNo", "include_adult=false", "language=en-GB")
         val genreId = pick?.let { genres(type)[it] }
         var path = "discover/$kind"
@@ -94,9 +125,10 @@ object OrbitCatalogs {
                     "$dateField.lte=$end-12-31", "vote_count.gte=${if (start == 1900) 200 else 50}")
             }
             catalog.id == "service" -> {
-                val id = services[pick] ?: services.values.first()
-                params += listOf("sort_by=popularity.desc", "with_watch_providers=$id", "watch_region=$region",
-                    "with_watch_monetization_types=flatrate")
+                // Subscription, free and with-ads titles alike (BBC iPlayer, Channel 4, Tubi …).
+                val list = services(type, key)
+                val id = list[pick] ?: list.values.first()
+                params += listOf("sort_by=popularity.desc", "with_watch_providers=$id", "watch_region=$region")
             }
             catalog.id == "language" -> {
                 val code = languages[pick] ?: languages.values.first()

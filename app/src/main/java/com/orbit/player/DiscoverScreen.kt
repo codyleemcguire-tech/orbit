@@ -343,7 +343,7 @@ internal fun MainActivity.loadDiscoverCatalogs() {
         // Pick up addons added or removed in Stremio since the last visit.
         val syncNote = syncStremioAddons()
         // Orbit's own TMDB catalogs (genres, decades, services, …) first, then the addons'.
-        val own = if (tmdbSettings.enabled && BuildConfig.TMDB_API_KEY.isNotBlank()) OrbitCatalogs.catalogs() else emptyList()
+        val own = if (tmdbSettings.enabled && BuildConfig.TMDB_API_KEY.isNotBlank()) OrbitCatalogs.catalogs(BuildConfig.TMDB_API_KEY) else emptyList()
         val catalogs = own + StremioAddons.fetchCatalogs()
         Handler(Looper.getMainLooper()).post {
             if (request != discoverRequest) return@post
