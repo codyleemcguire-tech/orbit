@@ -215,7 +215,7 @@ object OrbitCatalogs {
         when {
             catalog.id == "trending" -> path = "trending/$kind/week"
             catalog.id == "popular" -> params += "sort_by=popularity.desc"
-            catalog.id == "top" -> params += listOf("sort_by=vote_average.desc", "vote_count.gte=${if (tv) 300 else 1000}")
+            catalog.id == "top" -> params += listOf("sort_by=vote_average.desc", "vote_count.gte=${if (tv) 100 else 300}")
             catalog.id == "new" -> {
                 val from = Calendar.getInstance().apply { add(Calendar.MONTH, -4) }
                 params += listOf("sort_by=popularity.desc", "$dateField.lte=$today",
@@ -226,8 +226,10 @@ object OrbitCatalogs {
             catalog.id.startsWith("decade:") -> {
                 val start = catalog.id.removePrefix("decade:").toInt()
                 val end = if (start == 1900) 1969 else start + 9
+                // A low vote minimum keeps out empty entries but lets the list run deep
+                // (1980s Family: 1,400 films rather than 179); popularity keeps the best first.
                 params += listOf("sort_by=popularity.desc", "$dateField.gte=$start-01-01",
-                    "$dateField.lte=$end-12-31", "vote_count.gte=${if (start == 1900) 200 else 50}")
+                    "$dateField.lte=$end-12-31", "vote_count.gte=2")
             }
             catalog.id == "service" -> {
                 // Subscription, free and with-ads titles alike (BBC iPlayer, Channel 4, Tubi …).
@@ -237,7 +239,7 @@ object OrbitCatalogs {
             }
             catalog.id == "language" -> {
                 val code = languages[pick] ?: languages.values.first()
-                params += listOf("sort_by=popularity.desc", "with_original_language=$code", "vote_count.gte=20")
+                params += listOf("sort_by=popularity.desc", "with_original_language=$code", "vote_count.gte=2")
             }
         }
         if (genreId != null && path.startsWith("discover")) params += "with_genres=$genreId"
